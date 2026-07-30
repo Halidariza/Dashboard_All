@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Premium Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --bg-color: #353535;
+            /* Dark grey background */
+            --card-bg: #ffffff;
+            /* Clean white cards */
+            --primary-color: #00a8e8;
+            /* Bright cyan for active borders */
+            --secondary-color: #425a6a;
+            /* Slate blue for premium buttons */
+            --text-main: #2d3436;
+            /* High contrast dark text */
+            --text-muted: #636e72;
+            /* Grey text */
+            --accent-green: #00b894;
+            /* Vibrant teal active status */
+            --accent-red: #d63031;
+            --input-bg: #f5f6fa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 1.25rem;
+            /* Reduced padding */
+        }
+
+        .container {
+            max-width: 1400px;
+            /* Wider but compact internal */
+            margin: 0 auto;
+        }
+
+        header {
+            background: #ffffff;
+            margin: -1.25rem -1.25rem 1.5rem -1.25rem;
+            /* Full width inside body padding */
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 3px solid var(--primary-color);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #2d3436;
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .status-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.4rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            color: #636e72;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-red);
+        }
+
+        .status-dot.online {
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 0.5rem;
+            /* Sharper corners */
+            padding: 1rem;
+            /* Compact padding */
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease;
+            overflow: hidden;
+            color: var(--text-main);
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .card-title {
+            font-size: 0.8rem;
+            /* Smaller Label */
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .info-value {
+            font-size: 0.95rem;
+            /* Smaller value */
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            word-break: break-all;
+        }
+
+        .info-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        /* Layout Improvements */
+        .grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            /* Narrower sidebar */
+            grid-template-rows: auto 1fr auto;
+            gap: 1rem;
+            /* Tight gap */
+            align-items: stretch;
+        }
+
+        .sidebar,
+        .main-content {
+            display: contents;
+            /* Menghilangkan wrapper agar card bisa diatur langsung oleh grid utama */
+        }
+
+        /* Penugasan posisi grid untuk presisi alignment */
+        .card-info {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .card-topic-mgmt {
+            grid-column: 1;
+            grid-row: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-stats {
+            grid-column: 1;
+            grid-row: 3;
+        }
+
+        .card-tree {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-publish {
+            grid-column: 2;
+            grid-row: 3;
+        }
+
+        .log-container {
+            flex: 1;
+            min-height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border-radius: 0.5rem;
+            padding: 1.25rem;
+            border: 1px solid #e9ecef;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+
+
+        /* Topic Tree Styles */
+        .tree-container {
+            font-family: 'Inter', monospace;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            padding: 0.5rem;
+        }
+
+        .tree-node {
+            margin-left: 1.2rem;
+            position: relative;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.2rem 0;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .tree-toggle {
+            width: 12px;
+            height: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            font-size: 0.6rem;
+        }
+
+        .tree-toggle.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-icon {
+            color: var(--primary-color);
+            font-size: 0.9rem;
+        }
+
+        .node-name {
+            font-weight: 600;
+        }
+
+        .node-summary {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }
+
+        .node-value {
+            color: var(--secondary-color);
+            margin-left: 0.5rem;
+            font-family: monospace;
+            background: #f1f2f6;
+            padding: 0.1rem 0.4rem;
+            border-radius: 0.2rem;
+            font-weight: 700;
+        }
+
+        .tree-children {
+            display: none;
+        }
+
+        .tree-children.visible {
+            display: block;
+        }
+
+        /* History Styles */
+        .history-section {
+            margin-top: 0.4rem;
+            margin-left: 1.5rem;
+            border-left: 1px dashed rgba(255, 255, 255, 0.1);
+            padding-left: 0.8rem;
+        }
+
+        .history-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            user-select: none;
+            padding: 0.2rem 0;
+        }
+
+        .history-header:hover {
+            color: var(--text-main);
+        }
+
+        .history-badge {
+            background: #475569;
+            color: white;
+            font-size: 0.65rem;
+            padding: 1px 6px;
+            border-radius: 10px;
+            font-weight: 700;
+        }
+
+        .history-list {
+            display: none;
+            margin-top: 0.3rem;
+            gap: 0.3rem;
+        }
+
+        .history-list.visible {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .history-item {
+            font-size: 0.75rem;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 0.4rem 0.6rem;
+            border-radius: 0.3rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .history-time {
+            color: var(--text-muted);
+            font-size: 0.65rem;
+            display: block;
+            margin-bottom: 0.2rem;
+        }
+
+        .history-val {
+            font-family: monospace;
+            color: var(--text-main);
+            word-break: break-all;
+        }
+
+        #publish-msg {
+            width: 100%;
+            margin-top: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 0.5rem;
+            color: var(--text-main);
+            padding: 0.8rem;
+            height: 120px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            outline: none;
+            transition: all 0.2s;
+            resize: vertical;
+        }
+
+
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        /* Toast Notification */
+        #notification {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem;
+            background: #ffffff;
+            border: 1px solid #ddd;
+            border-left: 4px solid var(--accent-green);
+            color: var(--text-main);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transform: translateY(-100px);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 500;
+        }
+
+        #notification.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        #notification.error {
+            border-left-color: var(--accent-red);
+        }
+
+        /* Topic Input Styles */
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            align-items: stretch;
+        }
+
+        .input-group button {
+            white-space: nowrap;
+            padding: 0 1.25rem;
+        }
+
+        input {
+            flex: 1;
+            min-width: 0;
+            background: var(--input-bg);
+            border: 1px solid #ddd;
+            border-radius: 0.4rem;
+            padding: 0.5rem 0.75rem;
+            color: var(--text-main);
+            font-size: 0.8rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--primary-color);
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(0, 168, 232, 0.1);
+        }
+
+        button {
+            background: var(--secondary-color);
+            border: none;
+            border-radius: 0.4rem;
+            padding: 0.5rem 1rem;
+            /* Compact button */
+            color: white;
+            font-weight: 700;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        textarea:focus {
+            border-color: var(--primary-color);
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+
+        input:focus {
+            background: rgba(0, 0, 0, 0.3);
+            box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+        }
+
+        /* Topic Management Styles */
+        .topic-manager-card {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 200px;
+        }
+
+        #topic-list-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-top: 1rem;
+            padding-right: 0.5rem;
+            min-height: 100px;
+        }
+
+        .topic-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            border: 1px solid #eee;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .topic-name {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--primary-color);
+            word-break: break-all;
+            margin-right: 1rem;
+        }
+
+        .delete-btn {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--accent-red);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .delete-btn:hover {
+            background: var(--accent-red);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+        }
+
+        #info-broker {
+            font-size: 0.95rem;
+            line-height: 1.4;
+            margin-top: 0.4rem;
+            opacity: 0.9;
+        }
+
+        #broker-select,
+        input {
+            transition: all 0.2s;
+        }
+
+        /* Broker Selector Premium Styles */
+        .broker-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .broker-card {
+            background: #fdfdfd;
+            border: 1px solid #eee;
+            padding: 0.75rem 0.4rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.2rem;
+            position: relative;
+            overflow: hidden;
+            min-height: 65px;
+            color: var(--text-muted);
+        }
+
+        .broker-card:hover {
+            background: #fff;
+            border-color: #ccc;
+            transform: translateY(-2px);
+        }
+
+        .broker-card.active {
+            background: #fff;
+            border: 2px solid var(--primary-color);
+            box-shadow: 0 4px 15px rgba(0, 168, 232, 0.15);
+            color: var(--text-main);
+        }
+
+        .broker-card.active::after {
+            content: '✓';
+            position: absolute;
+            top: 0.4rem;
+            right: 0.4rem;
+            font-size: 0.6rem;
+            background: var(--primary-color);
+            color: var(--bg-color);
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .broker-name {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .broker-badge {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .broker-card.active .broker-badge {
+            color: var(--primary-color);
+        }
+
+        /* Modal Styling */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 14, 31, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            visibility: visible;
+            opacity: 1;
+            transition: all 0.3s ease;
+        }
+
+        .modal.hidden {
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .modal-content {
+            background: #ffffff;
+            width: 90%;
+            max-width: 380px;
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .modal-content h2 {
+            font-size: 1.5rem;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .modal-content p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-input-group input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 0.6rem;
+            font-size: 0.9rem;
+            background: #f8f9fa;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .modal-actions button {
+            flex: 1;
+            padding: 0.8rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-cancel {
+            background: #f1f2f6;
+            color: #2d3436;
+        }
+
+        .btn-login {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        /* Updated Home Link styling */
+        .back-portal {
+            background: #f8f9fa;
+            width: 32px;
+            height: 32px;
+            border-radius: 0.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            text-decoration: none;
+            border: 1px solid #eee;
+            transition: all 0.2s;
+        }
+
+        .back-portal:hover {
+            background: #fff;
+            color: var(--primary-color);
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="notification">
+        <div class="status-dot online"></div>
+        <span id="notification-text">Terhubung ke Broker!</span>
+    </div>
+    <div class="container">
+        <header>
+            <div id="live-clock" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                <div id="clock-date" style="font-size: 0.65rem; color: #636e72; font-weight: 500;">-</div>
+                <div id="clock-time" style="font-size: 0.85rem; color: #636e72; font-weight: 700; line-height: 1;">00:00
+                </div>
+            </div>
+            <h1>MQTT Dashboard Documentation</h1>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div id="status-badge" class="status-badge">
+                    <div id="status-dot" class="status-dot"></div>
+                    <span id="status-text">Menghubungkan...</span>
+                </div>
+                <a href="index.html" class="back-portal" title="Back to Portal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                    </svg>
+                </a>
+            </div>
+        </header>
+
+        <div class="grid">
+            <div class="sidebar">
+                <div class="card card-info">
+                    <div class="card-title">Info Broker</div>
+
+                    <div class="info-label">Choose Environment</div>
+                    <div class="broker-options">
+                        <div class="broker-card active" data-value="1">
+                            <span class="broker-name">Broker 1</span>
+                            <span class="broker-badge">Sandbox</span>
+                        </div>
+                        <div class="broker-card" data-value="2">
+                            <span class="broker-name">Broker 2</span>
+                            <span class="broker-badge">Staging</span>
+                        </div>
+                        <div class="broker-card" data-value="3">
+                            <span class="broker-name">Broker 3</span>
+                            <span class="broker-badge">Prod</span>
+                        </div>
+                    </div>
+
+                    <div class="info-label" style="margin-top: 1rem;">Broker URL</div>
+                    <div id="info-broker" class="info-value">-</div>
+
+                    <button id="connect-btn" style="width: 100%; margin-top: 1rem;">Connect Broker</button>
+                </div>
+
+                <div class="card topic-manager-card card-topic-mgmt">
+                    <div class="card-title">Topic Management</div>
+                    <div class="input-group">
+                        <input type="text" id="topic-input" placeholder="Input topic here...">
+                        <button id="update-topic">Add</button>
+                    </div>
+
+                    <div class="info-label" style="margin-top: 1.5rem;">TOPIC SUBSCRIBED LIST</div>
+                    <div id="topic-list-container" style="margin-top: 0.5rem;">
+                        <!-- List of topics with delete buttons will appear here -->
+                        <div style="text-align: center; color: var(--text-muted); padding: 1rem; font-size: 0.85rem;">
+                            No topic subscribed
+                        </div>
+                    </div>
+                </div>
+
+
+
+                <div class="card card-stats">
+                    <div class="card-title">Statistik</div>
+                    <div class="info-label">Message Received</div>
+                    <div id="msg-count" class="info-value" style="font-size: 2.5rem; color: var(--primary-color);">0
+                    </div>
+                    <button id="show-docs-btn" style="width: 100%; margin-top: 1rem; background: #435D6E;">
+                        Show Documentation
+                    </button>
+                    <button id="update-data-btn"
+                        style="width: 100%; margin-top: 0.5rem; background: var(--secondary-color);">
+                        Update Data
+                    </button>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <div class="card card-tree">
+                    <div class="card-title">Topic View</div>
+                    <div id="tree-container" class="log-container tree-container">
+                        <!-- Topic tree will appear here -->
+                    </div>
+                </div>
+
+                <div class="card card-publish">
+                    <div class="card-title">Publish Message</div>
+
+                    <div group style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+                        <div>
+                            <div class="info-label">Target Topic</div>
+                            <input type="text" id="publish-topic" placeholder="e.g. kitchen/lamp"
+                                style="width: 100%; margin: 0.5rem 0;">
+                        </div>
+                        <div style="display: flex; align-items: flex-end;">
+                            <button id="publish-btn"
+                                style="width: 100%; height: 40px; margin-bottom: 0.5rem; background: var(--secondary-color);">
+                                Send Message (Publish)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="info-label" style="margin-top: 1rem;">Message Payload (String or JSON)</div>
+                    <textarea id="publish-msg" placeholder='{"status": "on"}'></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Admin Login</h2>
+            <p>Masukkan kredensial untuk melakukan Update Data.</p>
+            <div class="modal-input-group">
+                <input type="text" id="username" placeholder="Username">
+                <input type="password" id="password" placeholder="Password">
+            </div>
+            <div class="modal-actions">
+                <button id="cancel-login" class="btn-cancel">Batal</button>
+                <button id="submit-login" class="btn-login">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        socket.emit('join_mqtt');
+        let messageCount = 0;
+        let topicTree = {}; // Object to store the tree structure
+
+        // Modal Selectors
+        const loginModal = document.getElementById('login-modal');
+        const updateDataBtn = document.getElementById('update-data-btn');
+        const cancelLoginBtn = document.getElementById('cancel-login');
+        const submitLoginBtn = document.getElementById('submit-login');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+
+        // Update Data Logic
+        updateDataBtn.addEventListener('click', () => {
+            loginModal.classList.remove('hidden');
+            usernameInput.focus();
+        });
+
+        cancelLoginBtn.addEventListener('click', () => {
+            loginModal.classList.add('hidden');
+            usernameInput.value = '';
+            passwordInput.value = '';
+        });
+
+        submitLoginBtn.addEventListener('click', () => {
+            const user = usernameInput.value;
+            const pass = passwordInput.value;
+
+            if (user === 'admin' && pass === 'admin') {
+                loginModal.classList.add('hidden');
+                // Kirim perintah ke server untuk membersihkan cache topik agar bisa dicatat ulang
+                socket.emit('clear_topic_cache');
+
+                // Reset input
+                usernameInput.value = '';
+                passwordInput.value = '';
+            } else {
+                alert('❌ Username atau password salah!');
+            }
+        });
+
+        // Allow enter in modal
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitLoginBtn.click();
+        });
+
+
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const brokerInfo = document.getElementById('info-broker');
+        const treeContainer = document.getElementById('tree-container');
+
+        // Live Clock Function
+        function updateClock() {
+            const now = new Date();
+
+            // Format Tanggal: Senin, 21 Juni 2022
+            const dateString = now.toLocaleDateString('id-ID', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+            });
+
+            // Format Waktu: 02:00
+            const timeString = now.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+
+            document.getElementById('clock-date').textContent = dateString;
+            document.getElementById('clock-time').textContent = timeString;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+        const countDisplay = document.getElementById('msg-count');
+        const connBtn = document.getElementById('connect-btn');
+
+
+        const notify = (message, isError = false) => {
+            const el = document.getElementById('notification');
+            const text = document.getElementById('notification-text');
+            const dot = el.querySelector('.status-dot');
+
+            text.innerText = message;
+            if (isError) {
+                el.classList.add('error');
+                dot.classList.remove('online');
+            } else {
+                el.classList.remove('error');
+                dot.classList.add('online');
+            }
+
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        };
+
+        const topicListContainer = document.getElementById('topic-list-container');
+
+        let isConnected = false;
+
+        socket.on('status', (data) => {
+            isConnected = data.connected;
+
+            if (isConnected) {
+                statusDot.classList.add('online');
+                statusText.innerText = 'Connected';
+                brokerInfo.innerText = data.broker || '-';
+                notify(`✅ Terhubung: ${data.broker.split('//')[1]}`);
+                connBtn.innerText = 'Disconnect Broker';
+                connBtn.style.background = 'var(--accent-red)';
+            } else {
+                statusDot.classList.remove('online');
+                statusText.innerText = 'Disconnected';
+                notify(data.error || '❌ Terputus dari Broker', true);
+                connBtn.innerText = 'Connect Broker';
+                connBtn.style.background = 'var(--secondary-color)';
+            }
+
+            // Update Topic List UI Directly
+            updateTopicUI(data.topics || []);
+        });
+
+        function updateTopicUI(topics) {
+            if (!topicListContainer) return;
+
+            if (topics.length === 0) {
+                topicListContainer.innerHTML = `
+                    <div style="text-align: center; color: var(--text-muted); padding: 1rem; font-size: 0.85rem;">
+                        No topic subscribed
+                    </div>
+                `;
+                return;
+            }
+
+            topicListContainer.innerHTML = '';
+            topics.forEach(t => {
+                const item = document.createElement('div');
+                item.className = 'topic-item';
+                item.innerHTML = `
+                    <span class="topic-name">${t}</span>
+                    <button class="delete-btn" onclick="removeTopic('${t}')">Delete</button>
+                `;
+                topicListContainer.appendChild(item);
+            });
+        }
+
+        window.removeTopic = (topic) => {
+            if (confirm(`Unsubscribe dari topik '${topic}'?`)) {
+                socket.emit('remove_topic', topic);
+            }
+        };
+
+        socket.on('mqtt_message', (data) => {
+            messageCount++;
+            countDisplay.innerText = messageCount;
+
+            const topics = data.topic.split('/');
+            let current = topicTree;
+
+            topics.forEach((part, index) => {
+                if (!current[part]) {
+                    current[part] = {
+                        _count: 0,
+                        _msgCount: 0,
+                        _value: null,
+                        _history: [],
+                        _children: {}
+                    };
+                }
+
+                current[part]._msgCount++;
+                if (index === topics.length - 1) {
+                    current[part]._value = data.message;
+                    // Simpan ke history (maksimal 20 pesan terakhir)
+                    current[part]._history.unshift({ value: data.message, time: data.time });
+                    if (current[part]._history.length > 20) current[part]._history.pop();
+                }
+                current = current[part]._children;
+            });
+
+            renderTree();
+        });
+
+        function renderTree() {
+            treeContainer.innerHTML = '';
+            const root = document.createElement('div');
+            buildTreeDOM(topicTree, root);
+            treeContainer.appendChild(root);
+        }
+
+        function buildTreeDOM(obj, parentElement) {
+            const sortedKeys = Object.keys(obj).sort();
+
+            sortedKeys.forEach(key => {
+                const node = obj[key];
+                const hasChildren = Object.keys(node._children).length > 0;
+
+                const nodeDiv = document.createElement('div');
+                nodeDiv.className = 'tree-node';
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'tree-item';
+
+                // Toggle Arrow
+                const toggle = document.createElement('span');
+                toggle.className = 'tree-toggle';
+                toggle.innerHTML = hasChildren ? '▶' : '';
+                itemDiv.appendChild(toggle);
+
+                // Folder/Leaf Icon
+                const icon = document.createElement('span');
+                icon.className = 'tree-icon';
+                icon.innerHTML = hasChildren ? '📁' : '📄';
+                itemDiv.appendChild(icon);
+
+                // Name
+                const name = document.createElement('span');
+                name.className = 'node-name';
+                name.innerText = key;
+                itemDiv.appendChild(name);
+
+                // Summary/Value
+                if (hasChildren) {
+                    const summary = document.createElement('span');
+                    summary.className = 'node-summary';
+                    summary.innerText = `(${Object.keys(node._children).length} topics, ${node._msgCount} messages)`;
+                    itemDiv.appendChild(summary);
+                } else {
+                    const value = document.createElement('span');
+                    value.className = 'node-value';
+                    value.innerText = node._value;
+                    itemDiv.appendChild(value);
+
+                    // Add History Section for leaf nodes
+                    if (node._history && node._history.length > 1) {
+                        const historySection = document.createElement('div');
+                        historySection.className = 'history-section';
+
+                        const historyHeader = document.createElement('div');
+                        historyHeader.className = 'history-header';
+                        historyHeader.innerHTML = `
+                            <span class="tree-toggle" style="font-size: 0.5rem;">▶</span>
+                            <span>History</span>
+                            <span class="history-badge">${node._history.length}</span>
+                        `;
+
+                        const historyList = document.createElement('div');
+                        historyList.className = 'history-list';
+
+                        // Render history items (skip the current/last one)
+                        node._history.slice(1).forEach(h => {
+                            const hItem = document.createElement('div');
+                            hItem.className = 'history-item';
+                            hItem.innerHTML = `
+                                <span class="history-time">${h.time}</span>
+                                <div class="history-val">${h.value}</div>
+                            `;
+                            historyList.appendChild(hItem);
+                        });
+
+                        historyHeader.onclick = (e) => {
+                            e.stopPropagation();
+                            const isVisible = historyList.classList.toggle('visible');
+                            historyHeader.querySelector('.tree-toggle').classList.toggle('expanded', isVisible);
+                        };
+
+                        historySection.appendChild(historyHeader);
+                        historySection.appendChild(historyList);
+                        nodeDiv.appendChild(historySection);
+                    }
+                }
+
+                nodeDiv.appendChild(itemDiv);
+
+                if (hasChildren) {
+                    const childrenDiv = document.createElement('div');
+                    childrenDiv.className = 'tree-children';
+
+                    itemDiv.onclick = (e) => {
+                        e.stopPropagation();
+                        const isVisible = childrenDiv.classList.toggle('visible');
+                        toggle.classList.toggle('expanded', isVisible);
+                    };
+
+                    buildTreeDOM(node._children, childrenDiv);
+                    nodeDiv.appendChild(childrenDiv);
+                }
+
+                parentElement.appendChild(nodeDiv);
+            });
+        }
+
+        let selectedBrokerId = '1';
+
+        document.querySelectorAll('.broker-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const brokerId = card.getAttribute('data-value');
+                if (brokerId === selectedBrokerId) return;
+
+                // Update UI state
+                document.querySelectorAll('.broker-card').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
+                selectedBrokerId = brokerId;
+
+                // Emit event
+                socket.emit('switch_broker', brokerId);
+
+                // Clear state
+                treeContainer.innerHTML = '';
+                topicTree = {};
+                messageCount = 0;
+                countDisplay.innerText = '0';
+            });
+        });
+
+        // Show Documentation Logic
+        document.getElementById('show-docs-btn').addEventListener('click', () => {
+            window.open('https://docs.google.com/spreadsheets/d/1WPMMNO323cSdg5ZQjtX5HXZP8Grv1z1V-qfjlbeEers/edit', '_blank');
+        });
+
+        connBtn.addEventListener('click', () => {
+            if (isConnected) {
+                socket.emit('disconnect_broker');
+            } else {
+                socket.emit('connect_broker', selectedBrokerId);
+            }
+        });
+
+        // Topic Update Logic
+        const topicInput = document.getElementById('topic-input');
+        const updateBtn = document.getElementById('update-topic');
+
+        updateBtn.addEventListener('click', () => {
+            const newTopic = topicInput.value.trim();
+            if (newTopic) {
+                socket.emit('add_topic', newTopic);
+                topicInput.value = '';
+            }
+        });
+
+        // Allow Enter key to trigger update
+        topicInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') updateBtn.click();
+        });
+
+        // Publish Message Logic
+        const pubTopic = document.getElementById('publish-topic');
+        const pubMsg = document.getElementById('publish-msg');
+        const pubBtn = document.getElementById('publish-btn');
+
+        pubBtn.addEventListener('click', () => {
+            const topic = pubTopic.value.trim();
+            const message = pubMsg.value.trim();
+
+            if (!topic) {
+                notify('❌ Topic tidak boleh kosong!', true);
+                return;
+            }
+            if (!message) {
+                notify('❌ Pesan tidak boleh kosong!', true);
+                return;
+            }
+
+            socket.emit('publish_message', { topic, message });
+            notify(`📤 Pesan dikirim ke ${topic}`);
+            pubMsg.value = ''; // Clear message after send
+        });
+
+        socket.on('error_notification', (msg) => {
+            notify('❌ ' + msg, true);
+        });
+    </script>
+</body>
+
+</html>

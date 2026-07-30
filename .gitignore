@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Environment variables (contains sensitive API keys)
+.env
+.env*.local
+
+# Logs and temporary files
+*.log
+mqtt_buffer.csv
+
+# OS metadata
+.DS_Store
+Thumbs.db
