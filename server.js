@@ -5,13 +5,26 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const dns = require('dns');
+const net = require('net');
+
+// Happy Eyeballs bawaan Node hanya memberi 250 ms per percobaan koneksi. Jalur
+// keluar server ke Google lebih lambat dari itu, jadi Node membatalkan sendiri
+// dan melapor ETIMEDOUT - gejalanya panggilan Apps Script gagal acak meski
+// curl dari mesin yang sama lancar. Beri tenggang yang masuk akal.
+net.setDefaultAutoSelectFamilyAttemptTimeout(5000);
+
+// Server juga tidak punya jalur keluar IPv6 sementara DNS Google tetap
+// mengembalikan alamat AAAA, jadi dahulukan IPv4 agar tidak ada percobaan
+// yang terbuang.
+dns.setDefaultResultOrder('ipv4first');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || 'localhost';
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Serve static files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -81,13 +94,40 @@ function bufferToCsv(topic, message) {
 }
 
 // Function to actually send data to Google Spreadsheet via GAS
+// --- Pemanggil Apps Script -----------------------------------------------
+// Panggilan ke script.google.com sesekali putus di jaringan server. Timeout
+// eksplisit plus retry singkat menahan gangguan sesaat supaya permintaan
+// pengguna tidak langsung gagal.
+const GAS_TIMEOUT_MS = 45000;
+const GAS_MAX_RETRY = 3;
+
+async function gasFetch(url, options = {}) {
+    let lastError;
+
+    for (let percobaan = 1; percobaan <= GAS_MAX_RETRY; percobaan++) {
+        try {
+            return await fetch(url, { ...options, signal: AbortSignal.timeout(GAS_TIMEOUT_MS) });
+        } catch (e) {
+            lastError = e;
+            const kode = (e.cause && e.cause.code) || e.name;
+            console.warn(`⚠️  Apps Script gagal (percobaan ${percobaan}/${GAS_MAX_RETRY}): ${kode}`);
+
+            if (percobaan < GAS_MAX_RETRY) {
+                await new Promise(r => setTimeout(r, 1000 * percobaan));
+            }
+        }
+    }
+
+    throw lastError;
+}
+
 async function sendToGas(topic, message, timestamp) {
     const GAS_URL = process.env.GAS_WEB_APP_URL;
     if (!GAS_URL) return;
 
     try {
         console.log(`📡 Sending buffered data: [${topic}]`);
-        const response = await fetch(GAS_URL, {
+        const response = await gasFetch(GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -223,7 +263,7 @@ io.on('connection', (socket) => {
         const GAS_URL = process.env.GAS_WEB_APP_URL;
         if (GAS_URL) {
             try {
-                await fetch(GAS_URL, {
+                await gasFetch(GAS_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'prepareSheet' })
@@ -320,7 +360,7 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
     console.log(`Server running at http://${HOST}:${PORT}`);
 });
 
@@ -615,7 +655,7 @@ async function callInventoryGas(payload) {
         throw new Error('GAS_INVENTORY_URL belum diisi di file .env. Deploy GAS_Inventory.js lalu tempel URL-nya.');
     }
 
-    const response = await fetch(url, {
+    const response = await gasFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -756,7 +796,7 @@ async function uploadFotoDokumen(body) {
 
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-            const response = await fetch(driveUrl, {
+            const response = await gasFetch(driveUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: payload,
