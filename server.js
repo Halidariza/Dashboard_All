@@ -15,7 +15,7 @@ const HOST = process.env.HOST || 'localhost';
 
 // Serve static files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '12mb' }));   // foto peminjaman dikirim sebagai base64
 
 // --- KONFIGURASI MQTT ---
 let subscribedTopics = []; // Menyimpan daftar topik yang di-subscribe
@@ -588,5 +588,300 @@ MODE JAWABAN
 
             res.json({ reply: msg });
         }
+    }
+});
+
+
+// ============================================================
+// INVENTORY ASET  (tambahan - tidak mengubah route yang sudah ada)
+// ============================================================
+// Semua request ke Apps Script di-proxy lewat server supaya:
+//  - URL GAS tetap tersembunyi di .env
+//  - tidak kena CORS preflight dari browser
+// ------------------------------------------------------------
+
+app.get('/api/inventory/config', (req, res) => {
+    res.json({
+        configured: Boolean(process.env.GAS_INVENTORY_URL && !process.env.GAS_INVENTORY_URL.includes('GANTI_DENGAN')),
+        sheetUrl: process.env.INVENTORY_SHEET_URL || null,
+        sheetId: process.env.INVENTORY_SHEET_ID || null
+    });
+});
+
+async function callInventoryGas(payload) {
+    const url = process.env.GAS_INVENTORY_URL;
+
+    if (!url || url.includes('GANTI_DENGAN')) {
+        throw new Error('GAS_INVENTORY_URL belum diisi di file .env. Deploy GAS_Inventory.js lalu tempel URL-nya.');
+    }
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+    });
+
+    const text = await response.text();
+
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        throw new Error('Respon Apps Script bukan JSON. Pastikan deployment "Who has access" = Anyone.');
+    }
+}
+
+// Folder Drive tempat foto dokumen peminjaman disimpan.
+const PEMINJAMAN_FOLDER_ID = process.env.PEMINJAMAN_FOLDER_ID || '1EXK0tqLjjH1qUugdGuG04GZnS1trcDaJ';
+
+// Folder Drive tempat foto bukti pengembalian disimpan.
+const PENGEMBALIAN_FOLDER_ID = process.env.PENGEMBALIAN_FOLDER_ID || '1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM';
+
+// Link foto yang belum berhasil ditulis ke kolom Document (Apps Script versi lama
+// belum punya action setDocument). Disimpan lokal, lalu ditambal otomatis
+// begitu deployment Apps Script diperbarui.
+// Dua jenis: peminjaman (kolom Document) dan pengembalian (kolom Foto Pengembalian).
+const DOC_JENIS = {
+    peminjaman: {
+        file: path.join(__dirname, 'data', 'peminjaman-doc.json'),
+        action: 'setDocument',
+        label: 'dokumen peminjaman'
+    },
+    pengembalian: {
+        file: path.join(__dirname, 'data', 'pengembalian-foto.json'),
+        action: 'setFotoPengembalian',
+        label: 'foto pengembalian'
+    }
+};
+
+function docConfig(jenis) {
+    return DOC_JENIS[jenis] || DOC_JENIS.peminjaman;
+}
+
+function readPendingDocs(jenis) {
+    try {
+        return JSON.parse(fs.readFileSync(docConfig(jenis).file, 'utf8'));
+    } catch (e) {
+        return [];
+    }
+}
+
+function writePendingDocs(jenis, list) {
+    const cfg = docConfig(jenis);
+
+    try {
+        fs.mkdirSync(path.dirname(cfg.file), { recursive: true });
+        fs.writeFileSync(cfg.file, JSON.stringify(list, null, 2), 'utf8');
+    } catch (e) {
+        console.error(`⚠️  Gagal menyimpan catatan link ${cfg.label}:`, e.message);
+    }
+}
+
+function rememberPendingDoc(jenis, entry) {
+    const list = readPendingDocs(jenis).filter(d => !(d.id === entry.id && d.tanggal === entry.tanggal));
+    list.push(entry);
+    writePendingDocs(jenis, list);
+}
+
+/** Coba tulis link ke kolom tujuan di sheet. true = berhasil masuk sheet. */
+async function writeDocumentToSheet(jenis, entry) {
+    try {
+        const res = await callInventoryGas({
+            action: docConfig(jenis).action,
+            id: entry.id,
+            tanggal: entry.tanggal,
+            url: entry.url
+        });
+        return Boolean(res && res.status === 'success');
+    } catch (e) {
+        return false;
+    }
+}
+
+/** Tambal semua link tertunda. Berhenti diam-diam kalau Apps Script belum mendukung. */
+async function flushPendingDocs(jenis) {
+    const list = readPendingDocs(jenis);
+    if (!list.length) return;
+
+    const sisa = [];
+    for (const entry of list) {
+        const ok = await writeDocumentToSheet(jenis, entry);
+        if (!ok) sisa.push(entry);
+    }
+
+    if (sisa.length !== list.length) {
+        console.log(`📝 ${list.length - sisa.length} link ${docConfig(jenis).label} berhasil ditulis ke sheet.`);
+        writePendingDocs(jenis, sisa);
+    }
+}
+
+/**
+ * Upload foto dokumen peminjaman / pengembalian.
+ * Jalur utama  : GAS Inventory (action uploadDocument).
+ * Jalur cadang : GAS Drive Connector (action upload) - dipakai kalau deployment
+ *                inventory masih versi lama sehingga belum kenal uploadDocument.
+ */
+async function uploadFotoDokumen(body) {
+    const pengembalian = String(body.jenis || '').toLowerCase() === 'pengembalian';
+    const folderId = pengembalian ? PENGEMBALIAN_FOLDER_ID : PEMINJAMAN_FOLDER_ID;
+    const prefix = pengembalian ? 'PGB' : 'PJM';
+
+    let primaryError = null;
+
+    try {
+        const result = await callInventoryGas(body);
+        if (result && result.status === 'success' && result.url) return result;
+        primaryError = (result && result.message) || 'Respon upload tidak dikenali.';
+    } catch (err) {
+        primaryError = err.message;
+    }
+
+    const driveUrl = process.env.GAS_WEB_APP_URL;
+    if (!driveUrl) {
+        throw new Error(primaryError);
+    }
+
+    console.warn(`⚠️  uploadDocument gagal di GAS Inventory (${primaryError}). Coba lewat Drive Connector...`);
+
+    const payload = JSON.stringify({
+        action: 'upload',
+        folderId,
+        name: body.fileName || `${prefix}_${body.id || 'aset'}_${Date.now()}.jpg`,
+        mimeType: body.mimeType || 'image/jpeg',
+        content: body.data
+    });
+
+    // Apps Script kadang membalas halaman HTML saat cold start - coba beberapa kali.
+    let lastError = 'respon kosong';
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const response = await fetch(driveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+                redirect: 'follow'
+            });
+
+            const json = JSON.parse(await response.text());
+
+            if (json && json.status === 'success' && json.file && json.file.url) {
+                return {
+                    status: 'success',
+                    message: 'Foto terupload lewat Drive Connector.',
+                    url: json.file.url,
+                    fileId: json.file.id,
+                    fileName: json.file.name,
+                    via: 'drive-connector'
+                };
+            }
+
+            lastError = (json && json.message) || 'respon tidak dikenali';
+        } catch (e) {
+            lastError = 'respon bukan JSON (kemungkinan cold start)';
+        }
+
+        console.warn(`   percobaan ${attempt}/3 gagal: ${lastError}`);
+    }
+
+    throw new Error(`Upload gagal. GAS Inventory: ${primaryError}. Drive Connector: ${lastError}`);
+}
+
+// Kolom Umur di spreadsheet disegarkan maksimal sekali sehari.
+let umurRefreshedOn = null;
+
+async function refreshUmurSekaliSehari() {
+    const hariIni = new Date().toISOString().slice(0, 10);
+    if (umurRefreshedOn === hariIni) return;
+
+    umurRefreshedOn = hariIni;
+
+    try {
+        const res = await callInventoryGas({ action: 'refreshUmur' });
+        if (res && res.status === 'success' && res.updated) {
+            console.log(`🗓️  Kolom Umur diperbarui: ${res.updated} baris.`);
+        }
+    } catch (e) {
+        // Apps Script versi lama belum punya action ini - abaikan saja.
+    }
+}
+
+app.post('/api/inventory', async (req, res) => {
+    const action = req.body && req.body.action;
+
+    if (!action) {
+        return res.status(400).json({ status: 'error', message: 'Parameter "action" wajib diisi.' });
+    }
+
+    try {
+        console.log(`📦 Inventory action: ${action}`);
+
+        let result;
+
+        if (action === 'uploadDocument') {
+            result = await uploadFotoDokumen(req.body);
+        } else {
+            result = await callInventoryGas(req.body);
+
+            // Baris baru peminjaman / pengembalian: pastikan link fotonya benar-benar
+            // masuk kolom tujuan (Document / Foto Pengembalian).
+            const jenisDoc = action === 'checkOut' ? 'peminjaman'
+                : (action === 'checkIn' ? 'pengembalian' : null);
+
+            if (jenisDoc && result && result.status === 'success' && req.body.dokumen) {
+                const entry = {
+                    id: req.body.id,
+                    tanggal: req.body.tanggal,
+                    url: req.body.dokumen,
+                    savedAt: new Date().toISOString()
+                };
+
+                if (!(await writeDocumentToSheet(jenisDoc, entry))) {
+                    rememberPendingDoc(jenisDoc, entry);
+                    result.documentPending = true;
+                    console.warn(`⚠️  Link ${docConfig(jenisDoc).label} belum bisa ditulis ke sheet, disimpan sementara.`);
+                }
+            }
+
+            // Buka daftar aset: sekalian segarkan kolom Umur di spreadsheet (sekali sehari).
+            if (action === 'getInventory' && result && result.status === 'success') {
+                refreshUmurSekaliSehari();
+            }
+
+            // Saat riwayat dibuka: coba tambal yang tertunda, lalu tampilkan link yang ada.
+            if (action === 'getKeluar' && result && result.status === 'success') {
+                await flushPendingDocs('peminjaman');
+                await flushPendingDocs('pengembalian');
+
+                const pending = readPendingDocs('peminjaman');
+                if (pending.length) {
+                    result.items = (result.items || []).map(item => {
+                        if (item.dokumen) return item;
+                        const match = pending.find(d => d.id === item.id && d.tanggal === item.tanggal);
+                        return match ? { ...item, dokumen: match.url, dokumenPending: true } : item;
+                    });
+                    result.pendingDocs = pending.length;
+                }
+            }
+
+            if (action === 'getPengembalian' && result && result.status === 'success') {
+                await flushPendingDocs('pengembalian');
+
+                const pending = readPendingDocs('pengembalian');
+                if (pending.length) {
+                    result.items = (result.items || []).map(item => {
+                        if (item.foto) return item;
+                        const match = pending.find(d => d.id === item.id && d.tanggal === item.tanggal);
+                        return match ? { ...item, foto: match.url, fotoPending: true } : item;
+                    });
+                    result.pendingFoto = pending.length;
+                }
+            }
+        }
+
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Inventory error:', error.message);
+        res.status(502).json({ status: 'error', message: error.message });
     }
 });
