@@ -597,8 +597,26 @@
             if (window.lucide) lucide.createIcons();
         }
 
+        /**
+         * HP punya aplikasi kamera bawaan, jadi input[capture] di camInput membuka
+         * kamera sungguhan tanpa perlu secure context - foto diambil oleh sistem
+         * operasi, bukan oleh halaman. Di desktop atribut itu diabaikan dan yang
+         * terbuka hanya file picker.
+         */
+        function punyaKameraBawaan() {
+            return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+        }
+
         function startCamera() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                // Browser hanya menyediakan API kamera di secure context (HTTPS atau
+                // localhost). Di halaman http:// biasa objeknya tidak ada sama sekali,
+                // jadi jelaskan sebabnya alih-alih diam-diam membuka file picker.
+                // Di HP peringatan ini tidak relevan: kameranya tetap terbuka.
+                if (!window.isSecureContext && !punyaKameraBawaan()) {
+                    toast('Kamera hanya bisa dipakai lewat HTTPS. Buka alamat https:// lalu coba lagi.', 'error');
+                }
+
                 el('camInput').click();   // fallback: kamera bawaan HP lewat input file
                 return;
             }
@@ -613,8 +631,10 @@
                     showStage('stageCam');
                     if (window.lucide) lucide.createIcons();
                 })
-                .catch(function () {
-                    toast('Kamera tidak bisa diakses, silakan pilih file foto.', 'error');
+                .catch(function (err) {
+                    // NotFoundError: tidak ada kamera. NotAllowedError: izin ditolak.
+                    // NotReadableError: kamera dipakai aplikasi lain.
+                    toast('Kamera tidak bisa diakses (' + (err && err.name ? err.name : 'error') + '), silakan pilih file foto.', 'error');
                     el('camInput').click();
                 });
         }
