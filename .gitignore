@@ -12,3 +12,6 @@ mqtt_buffer.csv
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Runtime state (dibuat ulang otomatis oleh server.js)
+data/
