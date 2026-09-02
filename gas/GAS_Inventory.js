@@ -24,7 +24,7 @@ var GID_INVENTORY = 0;          // Id, Nama Aset, Kategori, Merk, Kondisi, Lokas
 var GID_KELUAR = 415162369;     // Peminjaman: Tanggal, Id, Nama Aset, Kategori, Merk, Kondisi Keluar, Lokasi, Status, Tgl Rencana Kembali, Document
 var GID_MASTER = 631641782;     // Nama Aset, Kategori, Merk, Kondisi, Lokasi, Status
 
-var SCRIPT_VERSION = '2026-09-02-b-id-urut';
+var SCRIPT_VERSION = '2026-09-02-c-id-rapat';
 
 // Sheet berisi daftar pilihan form. Tiap kolom = satu field (Kategori, Kondisi,
 // Status, dst), isi di bawah header = pilihannya. Dicari berdasarkan nama tab.
@@ -56,10 +56,6 @@ var ID_PREFIX = 'CHP';
 // pembuatan sehingga Id tidak bisa diurutkan.
 var ID_KODE_TETAP = '20200729';
 
-// Urutan terakhir disimpan terpisah supaya nomor tidak terpakai ulang setelah
-// baris dihapus - memindai sheet saja membuat nomor bekas aset yang dihapus
-// diberikan lagi ke aset baru.
-var PROP_URUTAN_ASET = 'urutanAsetTerakhir';
 var TZ = 'Asia/Jakarta';
 
 // Folder Drive tujuan upload foto dokumen peminjaman.
@@ -442,13 +438,13 @@ function colIndex(header, name) {
 // ID GENERATOR  ->  CHP + ddMMyyyy + urut 5 digit
 // ============================================================
 function generateAssetId(sheet) {
-    var props = PropertiesService.getScriptProperties();
-    var tersimpan = parseInt(props.getProperty(PROP_URUTAN_ASET) || '0', 10) || 0;
-
-    // Sheet tetap dipindai sebagai jaring pengaman: kalau properti belum ada
-    // (script baru dipasang) penomoran tidak mengulang dari nol dan menabrak
-    // Id yang sudah dipakai.
-    var maxSheet = 0;
+    // Nomor diambil dari isi sheet saja supaya urutannya selalu rapat:
+    // 00001, 00002, 00003, dan seterusnya tanpa lompatan.
+    //
+    // Konsekuensinya nomor bekas baris yang dihapus akan dipakai lagi. Itu
+    // memang yang dikehendaki - deretan nomor lebih penting daripada nomor
+    // yang tidak pernah berulang.
+    var maxSeq = 0;
     var lastRow = sheet.getLastRow();
 
     if (lastRow > 1) {
@@ -458,14 +454,11 @@ function generateAssetId(sheet) {
             if (id.indexOf(ID_PREFIX) !== 0 || id.length < 5) continue;
 
             var seq = parseInt(id.slice(-5), 10);
-            if (!isNaN(seq) && seq > maxSheet) maxSheet = seq;
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
         }
     }
 
-    var next = Math.max(tersimpan, maxSheet) + 1;
-    props.setProperty(PROP_URUTAN_ASET, String(next));
-
-    return ID_PREFIX + ID_KODE_TETAP + ('00000' + next).slice(-5);
+    return ID_PREFIX + ID_KODE_TETAP + ('00000' + (maxSeq + 1)).slice(-5);
 }
 
 /** Pecah tanggal jadi {y, m, d}. Menerima Date, 'yyyy-MM-dd', atau 'dd-MM-yyyy'. */
