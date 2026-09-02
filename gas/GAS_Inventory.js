@@ -24,7 +24,7 @@ var GID_INVENTORY = 0;          // Id, Nama Aset, Kategori, Merk, Kondisi, Lokas
 var GID_KELUAR = 415162369;     // Peminjaman: Tanggal, Id, Nama Aset, Kategori, Merk, Kondisi Keluar, Lokasi, Status, Tgl Rencana Kembali, Document
 var GID_MASTER = 631641782;     // Nama Aset, Kategori, Merk, Kondisi, Lokasi, Status
 
-var SCRIPT_VERSION = '2026-09-02-a-foto-aset';
+var SCRIPT_VERSION = '2026-09-02-b-id-urut';
 
 // Sheet berisi daftar pilihan form. Tiap kolom = satu field (Kategori, Kondisi,
 // Status, dst), isi di bawah header = pilihannya. Dicari berdasarkan nama tab.
@@ -50,6 +50,16 @@ var KUNCI_KOL_TANGGAL = ['tanggal', 'tgl', 'waktu', 'date'];
 var KUNCI_KOL_NAMA = ['nama petugas', 'petugas', 'nama'];
 
 var ID_PREFIX = 'CHP';
+
+// Kode tetap di tengah Id aset. Ini BUKAN tanggal - semua aset memakai kode yang
+// sama, hanya 5 digit terakhir yang berjalan. Sebelumnya bagian ini diisi tanggal
+// pembuatan sehingga Id tidak bisa diurutkan.
+var ID_KODE_TETAP = '20200729';
+
+// Urutan terakhir disimpan terpisah supaya nomor tidak terpakai ulang setelah
+// baris dihapus - memindai sheet saja membuat nomor bekas aset yang dihapus
+// diberikan lagi ke aset baru.
+var PROP_URUTAN_ASET = 'urutanAsetTerakhir';
 var TZ = 'Asia/Jakarta';
 
 // Folder Drive tujuan upload foto dokumen peminjaman.
@@ -432,25 +442,30 @@ function colIndex(header, name) {
 // ID GENERATOR  ->  CHP + ddMMyyyy + urut 5 digit
 // ============================================================
 function generateAssetId(sheet) {
+    var props = PropertiesService.getScriptProperties();
+    var tersimpan = parseInt(props.getProperty(PROP_URUTAN_ASET) || '0', 10) || 0;
+
+    // Sheet tetap dipindai sebagai jaring pengaman: kalau properti belum ada
+    // (script baru dipasang) penomoran tidak mengulang dari nol dan menabrak
+    // Id yang sudah dipakai.
+    var maxSheet = 0;
     var lastRow = sheet.getLastRow();
-    var maxSeq = 0;
 
     if (lastRow > 1) {
         var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
         for (var i = 0; i < ids.length; i++) {
             var id = String(ids[i][0] || '');
-            if (id.indexOf(ID_PREFIX) === 0 && id.length >= 5) {
-                var seq = parseInt(id.slice(-5), 10);
-                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
-            }
+            if (id.indexOf(ID_PREFIX) !== 0 || id.length < 5) continue;
+
+            var seq = parseInt(id.slice(-5), 10);
+            if (!isNaN(seq) && seq > maxSheet) maxSheet = seq;
         }
     }
 
-    var next = maxSeq + 1;
-    var datePart = Utilities.formatDate(new Date(), TZ, 'ddMMyyyy');
-    var seqPart = ('00000' + next).slice(-5);
+    var next = Math.max(tersimpan, maxSheet) + 1;
+    props.setProperty(PROP_URUTAN_ASET, String(next));
 
-    return ID_PREFIX + datePart + seqPart;
+    return ID_PREFIX + ID_KODE_TETAP + ('00000' + next).slice(-5);
 }
 
 /** Pecah tanggal jadi {y, m, d}. Menerima Date, 'yyyy-MM-dd', atau 'dd-MM-yyyy'. */
