@@ -542,7 +542,19 @@
         }
 
         .table-scroll {
+            /* Tabel lebih lebar dari layar ponsel; digulir menyamping di dalam
+               kotaknya sendiri, bukan dengan menyembunyikan kolom. */
             overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+
+            /* Gulir menyamping berhenti di ujung tabel, tidak merembet jadi
+               gerakan "kembali" bawaan browser ponsel. */
+            overscroll-behavior-x: contain;
+        }
+
+        .table-scroll table {
+            /* Tanpa ini kolom saling menghimpit alih-alih memicu gulir. */
+            min-width: max-content;
         }
 
         table {
@@ -961,59 +973,22 @@
             to { transform: rotate(360deg); }
         }
 
-        /* ---------- Penyesuaian bertahap menurut lebar layar ----------
-           Tabel aset punya 10 kolom dan butuh sekitar 790px. Di layar yang lebih
-           sempit dari itu kolomnya terpotong dan harus digeser-geser. Daripada
-           dibiarkan menggulir, kolom yang paling tidak penting disembunyikan
-           bertahap supaya isinya tetap terbaca penuh tanpa geser. */
+        /* ---------- Penyesuaian menurut lebar layar ----------
+           Tabel aset punya 10 kolom dan lebih lebar dari layar ponsel. Kolomnya
+           sengaja TIDAK disembunyikan - semuanya tetap ada dan tabel digulir
+           menyamping di dalam kotaknya sendiri. */
 
-        /* Laptop kecil: rapatkan sel dulu sebelum ada kolom yang dibuang. */
+        /* Laptop kecil: rapatkan sel supaya lebih banyak kolom muat sekaligus. */
         @media (max-width: 1080px) {
             thead th { padding: 11px 11px; }
             tbody td { padding: 11px 11px; }
             table { font-size: 0.82rem; }
         }
 
-        /* Umur bisa dihitung dari Tgl Masuk, jadi paling dulu disembunyikan. */
+        /* Kartu statistik dua kolom di lebar tablet - auto-fit menyisakan
+           3 + 1 menggantung. */
         @media (max-width: 1024px) {
-            /* auto-fit menyisakan 3 + 1 menggantung di lebar tablet. Dua kolom
-               membuat keempat kartu terbagi rata. */
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
-
-            #tabelAset th:nth-child(9),
-            #tabelAset td:nth-child(9) { display: none; }
-
-            #tabelKeluar th:nth-child(9),
-            #tabelKeluar td:nth-child(9) { display: none; }
-        }
-
-        @media (max-width: 900px) {
-            #tabelAset th:nth-child(8),
-            #tabelAset td:nth-child(8) { display: none; }
-
-            #tabelKeluar th:nth-child(5),
-            #tabelKeluar td:nth-child(5) { display: none; }
-        }
-
-        @media (max-width: 820px) {
-            #tabelAset th:nth-child(4),
-            #tabelAset td:nth-child(4) { display: none; }
-
-            #tabelKeluar th:nth-child(4),
-            #tabelKeluar td:nth-child(4) { display: none; }
-        }
-
-        /* Ponsel: sisakan identitas, lokasi, status, dan aksi. */
-        @media (max-width: 720px) {
-            #tabelAset th:nth-child(3),
-            #tabelAset td:nth-child(3),
-            #tabelAset th:nth-child(5),
-            #tabelAset td:nth-child(5) { display: none; }
-
-            #tabelKeluar th:nth-child(3),
-            #tabelKeluar td:nth-child(3),
-            #tabelKeluar th:nth-child(7),
-            #tabelKeluar td:nth-child(7) { display: none; }
         }
 
         @media (max-width: 720px) {
