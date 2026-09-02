@@ -780,6 +780,38 @@
         /* ---------- Layar kecil ----------
            Sidebar 72px memakan seperlima lebar ponsel dan tidak bisa melebar
            lewat hover di layar sentuh, jadi diubah jadi nav bawah. */
+        /* ---------- Penyesuaian bertahap menurut lebar layar ----------
+           Tabel proyek punya 9 kolom. Di layar sempit kolom yang paling tidak
+           penting disembunyikan bertahap supaya isinya terbaca penuh tanpa
+           perlu digeser ke samping. */
+        @media (max-width: 1080px) {
+            #tabelProyek th { padding: 10px 10px; }
+            #tabelProyek td { padding: 10px 10px; }
+            #tabelProyek { font-size: 0.85rem; }
+        }
+
+        /* Nama pengelola paling panjang, dibuang lebih dulu. */
+        @media (max-width: 1024px) {
+            #tabelProyek th:nth-child(8),
+            #tabelProyek td:nth-child(8) { display: none; }
+        }
+
+        @media (max-width: 900px) {
+            #tabelProyek th:nth-child(6),
+            #tabelProyek td:nth-child(6) { display: none; }
+        }
+
+        @media (max-width: 820px) {
+            #tabelProyek th:nth-child(5),
+            #tabelProyek td:nth-child(5) { display: none; }
+        }
+
+        /* Ponsel: sisakan centang, id, nama proyek, status, dan aksi. */
+        @media (max-width: 720px) {
+            #tabelProyek th:nth-child(4),
+            #tabelProyek td:nth-child(4) { display: none; }
+        }
+
         @media (max-width: 720px) {
             .sidebar {
                 position: fixed;
@@ -965,7 +997,7 @@
             <div id="loader" class="loader hidden"></div>
 
             <div id="resultArea" class="table-responsive">
-                <table>
+                <table id="tabelProyek">
                     <thead>
                         <tr>
                             <th style="width: 40px;"><input type="checkbox"></th>
