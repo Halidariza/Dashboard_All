@@ -12,6 +12,7 @@
     var options = {};
     var editingId = null;
     var confirmCallback = null;
+    var sheetUrl = '';        // alamat spreadsheet, hanya dibuka setelah login admin
 
     // Foto dokumen (belum diupload sampai form disimpan) - satu picker per form
     var MAX_PHOTO_PX = 1600;
@@ -1266,6 +1267,29 @@
         loadPetugas();
     }
 
+    /**
+     * Spreadsheet memuat data master, jadi diperlakukan sama seperti tambah,
+     * edit, dan hapus: khusus admin. Saat masih Guest tautannya ditampilkan
+     * terkunci - href sengaja dikosongkan supaya tidak bisa dibuka lewat
+     * "buka di tab baru" atau salin alamat tautan.
+     */
+    function perbaruiSheetLink() {
+        var link = $('sheetLink');
+        if (!link) return;
+
+        var admin = window.Auth ? Auth.isLoggedIn() : true;
+
+        if (admin && sheetUrl) {
+            link.href = sheetUrl;
+            link.classList.remove('locked');
+            link.title = 'Spreadsheet';
+        } else {
+            link.removeAttribute('href');
+            link.classList.add('locked');
+            link.title = 'Spreadsheet (khusus admin)';
+        }
+    }
+
     // ============================================================
     // INIT
     // ============================================================
@@ -1277,9 +1301,9 @@
             .then(function (r) { return r.json(); })
             .then(function (cfg) {
                 if (cfg.sheetUrl) {
-                    var link = $('sheetLink');
-                    link.href = cfg.sheetUrl;
-                    link.style.display = 'inline-flex';
+                    sheetUrl = cfg.sheetUrl;
+                    $('sheetLink').style.display = 'inline-flex';
+                    perbaruiSheetLink();
                 }
                 if (!cfg.configured) {
                     $('setupAlert').classList.add('show');
@@ -1307,8 +1331,28 @@
                     status.className = 'badge ' + (masuk ? 'badge-green' : 'badge-gray');
                 }
 
+                perbaruiSheetLink();
+
                 if (assets.length) renderAssets();
             }
+        });
+
+        // Guest yang menekan tautan spreadsheet diarahkan ke login dulu.
+        $('sheetLink').addEventListener('click', function (e) {
+            if (window.Auth && Auth.isLoggedIn() && sheetUrl) return;   // biarkan terbuka normal
+
+            e.preventDefault();
+
+            Auth.require(function () {
+                perbaruiSheetLink();
+
+                // Popup setelah modal login kadang diblokir browser karena bukan
+                // hasil klik langsung; kalau begitu tautannya sudah aktif dan
+                // tinggal diklik sekali lagi.
+                if (!window.open(sheetUrl, '_blank', 'noopener')) {
+                    toast('Login berhasil. Klik Spreadsheet sekali lagi untuk membukanya.', 'success');
+                }
+            });
         });
 
         // Tambah aset mengubah data master -> khusus admin, sejalan dengan edit & hapus.
