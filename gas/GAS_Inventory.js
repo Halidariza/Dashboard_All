@@ -24,7 +24,7 @@ var GID_INVENTORY = 0;          // Id, Nama Aset, Kategori, Merk, Kondisi, Lokas
 var GID_KELUAR = 415162369;     // Peminjaman: Tanggal, Id, Nama Aset, Kategori, Merk, Kondisi Keluar, Lokasi, Status, Tgl Rencana Kembali, Document
 var GID_MASTER = 631641782;     // Nama Aset, Kategori, Merk, Kondisi, Lokasi, Status
 
-var SCRIPT_VERSION = '2026-09-01-d-isi-ulang-otomatis';
+var SCRIPT_VERSION = '2026-09-02-a-foto-aset';
 
 // Sheet berisi daftar pilihan form. Tiap kolom = satu field (Kategori, Kondisi,
 // Status, dst), isi di bawah header = pilihannya. Dicari berdasarkan nama tab.
@@ -60,8 +60,12 @@ var DRIVE_FOLDER_ID = '1EXK0tqLjjH1qUugdGuG04GZnS1trcDaJ';
 // https://drive.google.com/drive/folders/1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM
 var DRIVE_FOLDER_PENGEMBALIAN_ID = '1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM';
 
+// Folder Drive tujuan upload foto aset (dipakai saat menambah aset baru).
+// https://drive.google.com/drive/folders/1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V
+var DRIVE_FOLDER_ASET_ID = '1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V';
+
 // Header baku tiap sheet (dipakai saat sheet masih kosong)
-var HEADER_INVENTORY = ['Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status', 'Tgl Masuk', 'Umur'];
+var HEADER_INVENTORY = ['Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status', 'Tgl Masuk', 'Umur', 'Dokumen'];
 var HEADER_KELUAR = ['Tanggal', 'Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi Keluar', 'Lokasi', 'Status', 'Tgl Rencana Kembali', 'Document'];
 var HEADER_MASTER = ['Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status'];
 var HEADER_PENGEMBALIAN = ['Tanggal Kembali', 'Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi Kembali',
@@ -159,6 +163,29 @@ function ensureHeader(sheet, header) {
         sheet.setFrozenRows(1);
     }
     return sheet;
+}
+
+/**
+ * Pastikan satu kolom ada di sheet yang sudah berisi data.
+ * ensureHeader hanya menulis header saat sheet masih kosong, jadi kolom yang
+ * ditambahkan belakangan (mis. Dokumen) tidak akan pernah muncul di sheet lama.
+ * Mengembalikan nomor kolomnya.
+ */
+function pastikanKolom(sheet, nama) {
+    var lastCol = Math.max(sheet.getLastColumn(), 1);
+    var header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var col = colIndex(header, nama);
+    if (col) return col;
+
+    col = lastCol + 1;
+    sheet.getRange(1, col)
+        .setValue(nama)
+        .setFontWeight('bold')
+        .setBackground('#425C6D')
+        .setFontColor('#FFFFFF')
+        .setHorizontalAlignment('center');
+
+    return col;
 }
 
 /** Tulis satu baris mengikuti urutan header aktual di sheet (kolom tak dikenal dibiarkan kosong). */
@@ -505,6 +532,7 @@ function getInventory() {
             status: r['Status'] || '',
             tglMasuk: r['Tgl Masuk'] || '',
             umur: hitungUmur(r['Tgl Masuk']) || r['Umur'] || '',
+            dokumen: r['Dokumen'] || '',
             row: r._row
         };
     });
@@ -720,20 +748,26 @@ function addAsset(data) {
         var tglMasuk = data.tglMasuk || todayString();
         var created = [];
 
+        // Sheet lama belum punya kolom Dokumen; tambahkan sebelum menulis baris.
+        pastikanKolom(sheet, 'Dokumen');
+
         for (var i = 0; i < jumlah; i++) {
             var newId = generateAssetId(sheet);
 
-            sheet.appendRow([
-                newId,
-                data.nama,
-                data.kategori || '',
-                data.merk || '',
-                data.kondisi || 'Baru',
-                data.lokasi || '',
-                data.status || 'Tersedia',
-                tglMasuk,
-                hitungUmur(tglMasuk)
-            ]);
+            // appendByHeader mengikuti urutan kolom yang benar-benar ada di sheet,
+            // jadi aman walau ada kolom tambahan buatan pengguna di tengah.
+            appendByHeader(sheet, {
+                'Id': newId,
+                'Nama Aset': data.nama,
+                'Kategori': data.kategori || '',
+                'Merk': data.merk || '',
+                'Kondisi': data.kondisi || 'Baru',
+                'Lokasi': data.lokasi || '',
+                'Status': data.status || 'Tersedia',
+                'Tgl Masuk': tglMasuk,
+                'Umur': hitungUmur(tglMasuk),
+                'Dokumen': data.dokumen || ''
+            });
 
             created.push(newId);
         }
@@ -759,6 +793,9 @@ function updateAsset(data) {
     var found = findRowById(sheet, data.id);
     if (!found) return { status: 'error', message: 'Aset dengan Id ' + data.id + ' tidak ditemukan.' };
 
+    // Sheet lama belum punya kolom Dokumen - tanpa ini link foto akan hilang diam-diam.
+    if (data.dokumen) pastikanKolom(sheet, 'Dokumen');
+
     var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 
     var mapping = {
@@ -768,7 +805,8 @@ function updateAsset(data) {
         'Kondisi': data.kondisi,
         'Lokasi': data.lokasi,
         'Status': data.status,
-        'Tgl Masuk': data.tglMasuk
+        'Tgl Masuk': data.tglMasuk,
+        'Dokumen': data.dokumen
     };
 
     Object.keys(mapping).forEach(function (key) {
@@ -1011,13 +1049,23 @@ function getPengembalian() {
 function uploadDocument(data) {
     if (!data.data) return { status: 'error', message: 'Data foto kosong.' };
 
-    var pengembalian = String(data.jenis || '').toLowerCase() === 'pengembalian';
-    var folderId = pengembalian ? DRIVE_FOLDER_PENGEMBALIAN_ID : DRIVE_FOLDER_ID;
+    var jenis = String(data.jenis || '').toLowerCase();
+
+    // Tiap jenis foto punya folder Drive sendiri supaya isinya tidak tercampur.
+    var folderId = DRIVE_FOLDER_ID;
+    var prefix = 'PJM_';
+
+    if (jenis === 'pengembalian') {
+        folderId = DRIVE_FOLDER_PENGEMBALIAN_ID;
+        prefix = 'PGB_';
+    } else if (jenis === 'aset') {
+        folderId = DRIVE_FOLDER_ASET_ID;
+        prefix = 'AST_';
+    }
 
     var mime = data.mimeType || 'image/jpeg';
     var ext = mime.indexOf('png') > -1 ? '.png' : (mime.indexOf('webp') > -1 ? '.webp' : '.jpg');
     var stamp = Utilities.formatDate(new Date(), TZ, 'yyyyMMdd-HHmmss');
-    var prefix = pengembalian ? 'PGB_' : 'PJM_';
     var name = data.fileName || (prefix + (data.id || 'aset') + '_' + stamp + ext);
 
     var folder;

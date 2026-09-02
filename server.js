@@ -677,6 +677,10 @@ const PEMINJAMAN_FOLDER_ID = process.env.PEMINJAMAN_FOLDER_ID || '1EXK0tqLjjH1qU
 // Folder Drive tempat foto bukti pengembalian disimpan.
 const PENGEMBALIAN_FOLDER_ID = process.env.PENGEMBALIAN_FOLDER_ID || '1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM';
 
+// Folder Drive tempat foto aset baru disimpan.
+// https://drive.google.com/drive/folders/1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V
+const ASET_FOLDER_ID = process.env.ASET_FOLDER_ID || '1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V';
+
 // Link foto yang belum berhasil ditulis ke kolom Document (Apps Script versi lama
 // belum punya action setDocument). Disimpan lokal, lalu ditambal otomatis
 // begitu deployment Apps Script diperbarui.
@@ -762,9 +766,11 @@ async function flushPendingDocs(jenis) {
  *                inventory masih versi lama sehingga belum kenal uploadDocument.
  */
 async function uploadFotoDokumen(body) {
-    const pengembalian = String(body.jenis || '').toLowerCase() === 'pengembalian';
-    const folderId = pengembalian ? PENGEMBALIAN_FOLDER_ID : PEMINJAMAN_FOLDER_ID;
-    const prefix = pengembalian ? 'PGB' : 'PJM';
+    // Tiap jenis foto punya folder Drive sendiri; dipakai jalur cadangan di bawah.
+    const jenis = String(body.jenis || '').toLowerCase();
+    const folderId = jenis === 'pengembalian' ? PENGEMBALIAN_FOLDER_ID
+        : (jenis === 'aset' ? ASET_FOLDER_ID : PEMINJAMAN_FOLDER_ID);
+    const prefix = jenis === 'pengembalian' ? 'PGB' : (jenis === 'aset' ? 'AST' : 'PJM');
 
     let primaryError = null;
 

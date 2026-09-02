@@ -1354,6 +1354,58 @@
                         <label for="f-jumlah">Jumlah Unit <span class="hint">(tiap unit dapat Id sendiri)</span></label>
                         <input type="number" id="f-jumlah" value="1" min="1" max="50">
                     </div>
+                    <div class="form-field full">
+                        <label>Dokumen
+                            <span class="hint">(foto aset - otomatis diupload ke Drive)</span></label>
+
+                        <div class="photo-box">
+                            <!-- Tahap 1: belum ada foto -->
+                            <div class="photo-stage show" id="a-stageEmpty">
+                                <div class="photo-actions">
+                                    <button type="button" class="btn" id="a-camBtn">
+                                        <i data-lucide="camera"></i> Ambil Foto
+                                    </button>
+                                    <button type="button" class="btn" id="a-fileBtn">
+                                        <i data-lucide="image-plus"></i> Pilih dari Galeri
+                                    </button>
+                                </div>
+                                <div class="photo-hint">Foto akan diupload ke folder Drive aset saat disimpan,
+                                    dan link-nya otomatis masuk ke kolom Dokumen.</div>
+                            </div>
+
+                            <!-- Tahap 2: kamera aktif -->
+                            <div class="photo-stage" id="a-stageCam">
+                                <video id="a-video" playsinline muted autoplay></video>
+                                <div class="photo-actions">
+                                    <button type="button" class="btn btn-primary" id="a-shotBtn">
+                                        <i data-lucide="circle-dot"></i> Jepret
+                                    </button>
+                                    <button type="button" class="btn btn-ghost" id="a-camCancelBtn">
+                                        <i data-lucide="x"></i> Batal
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Tahap 3: preview foto -->
+                            <div class="photo-stage" id="a-stagePreview">
+                                <img id="a-preview" alt="Foto aset">
+                                <div class="photo-actions">
+                                    <button type="button" class="btn" id="a-retakeBtn">
+                                        <i data-lucide="refresh-cw"></i> Ambil Ulang
+                                    </button>
+                                    <button type="button" class="btn btn-ghost" id="a-removeBtn">
+                                        <i data-lucide="trash-2"></i> Hapus
+                                    </button>
+                                </div>
+                                <div class="photo-status" id="a-photoStatus"></div>
+                            </div>
+                        </div>
+
+                        <input type="file" id="a-fileInput" accept="image/*" style="display:none;">
+                        <input type="file" id="a-camInput" accept="image/*" capture="environment"
+                            style="display:none;">
+                        <canvas id="a-canvas" style="display:none;"></canvas>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">

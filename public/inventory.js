@@ -18,6 +18,7 @@
     var MAX_PHOTO_PX = 1600;
     var photoOut = null;      // form peminjaman
     var photoReturn = null;   // form pengembalian
+    var photoAsset = null;    // form tambah / edit aset
 
     // ---------- DOM ----------
     var $ = function (id) { return document.getElementById(id); };
@@ -71,6 +72,7 @@
         $(id).classList.remove('show');
         if (id === 'outModal' && photoOut) photoOut.stop();
         if (id === 'returnModal' && photoReturn) photoReturn.stop();
+        if (id === 'assetModal' && photoAsset) photoAsset.stop();
     }
 
     function busy(btn, isBusy, label) {
@@ -488,6 +490,7 @@
         $('f-tglMasuk').value = todayISO();
         $('f-jumlah').value = '1';
         $('jumlahField').style.display = 'flex';
+        if (photoAsset) photoAsset.reset();
         openModal('assetModal');
         $('f-nama').focus();
     }
@@ -504,6 +507,9 @@
         setSelectValue($('f-status'), a.status);
         $('f-tglMasuk').value = a.tglMasuk || '';
         $('jumlahField').style.display = 'none';
+        // Foto lama tidak ditarik ulang ke picker; mengambil foto baru akan
+        // menggantikan link di kolom Dokumen, membiarkannya kosong tidak mengubah apa pun.
+        if (photoAsset) photoAsset.reset();
         openModal('assetModal');
         $('f-nama').focus();
     }
@@ -537,9 +543,22 @@
             payload.jumlah = parseInt($('f-jumlah').value, 10) || 1;
         }
 
-        busy(btn, true, 'Menyimpan...');
+        // Foto diupload lebih dulu supaya link-nya bisa ikut dalam satu baris yang
+        // sama - sama seperti alur peminjaman & pengembalian. Kalau uploadnya gagal,
+        // barisnya sengaja tidak jadi dibuat supaya tidak ada aset tanpa dokumen
+        // yang dikira sudah berfoto.
+        var foto = photoAsset ? photoAsset.value() : null;
 
-        api(action, payload)
+        busy(btn, true, foto ? 'Mengupload foto...' : 'Menyimpan...');
+
+        var siap = foto
+            ? uploadPhoto(editingId || nama, 'aset', foto).then(function (url) {
+                payload.dokumen = url;
+            })
+            : Promise.resolve();
+
+        siap
+            .then(function () { return api(action, payload); })
             .then(function (res) {
                 closeModal('assetModal');
                 toast(res.message || 'Tersimpan.', 'success');
@@ -1380,8 +1399,10 @@
         // Foto dokumen: peminjaman & pengembalian punya kontrol sendiri-sendiri
         photoOut = createPhotoPicker('o-');
         photoReturn = createPhotoPicker('r-');
+        photoAsset = createPhotoPicker('a-');
         photoOut.bind();
         photoReturn.bind();
+        photoAsset.bind();
         $('saveAssetBtn').addEventListener('click', saveAsset);
         $('saveOutBtn').addEventListener('click', saveOut);
         $('saveReturnBtn').addEventListener('click', saveReturn);
