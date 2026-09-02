@@ -213,6 +213,11 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+
+            /* Flex item default memakai min-width:auto, sehingga menolak
+               menyempit di bawah lebar minimum isinya - tabel lebar lalu
+               mendorong seluruh halaman melewati tepi layar ponsel. */
+            min-width: 0;
         }
 
         .top-header {
@@ -943,8 +948,108 @@
 
         @media (max-width: 720px) {
             .form-grid { grid-template-columns: 1fr; }
-            .content { padding: 18px 16px 32px; }
-            .top-header { padding: 0 16px; }
+
+            /* Ruang bawah disisakan untuk nav yang kini menempel di dasar layar. */
+            .content { padding: 16px 14px 84px; }
+
+            /* Sidebar 72px memakan seperlima lebar ponsel, dan pelebaran saat
+               hover tidak pernah terjadi di layar sentuh. Ubah jadi nav bawah:
+               position fixed mengeluarkannya dari flow, sehingga konten utama
+               otomatis memakai lebar penuh. */
+            .sidebar {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                width: 100%;
+                height: 58px;
+                flex-direction: row;
+                align-items: center;
+                padding: 0 6px;
+                gap: 0;
+            }
+
+            .sidebar:hover { width: 100%; }
+
+            .logo-container,
+            .sidebar-avatar-section { display: none; }
+
+            .sidebar-menu {
+                flex-direction: row;
+                justify-content: space-around;
+                align-items: center;
+                width: 100%;
+                padding: 0;
+                gap: 0;
+            }
+
+            /* Pembungkus tombol login ikut jadi satu kolom nav, bukan sekadar
+               menempel di ujung. */
+            .sidebar-menu .menu-spacer {
+                margin-top: 0;
+                width: auto;
+                flex: 1 1 0;
+                display: flex;
+            }
+
+            .sidebar-menu .sidebar-item {
+                flex: 1 1 0;
+                width: auto;
+                min-width: 0;
+                height: 44px;
+                padding: 0;
+                gap: 0;
+                justify-content: center;
+            }
+
+            /* Label menu disembunyikan; atribut title tetap ada untuk aksesibilitas. */
+            .sidebar-item span { display: none; }
+
+            /* Header dibuat setinggi isinya supaya judul tidak terhimpit tombol. */
+            .top-header {
+                height: auto;
+                min-height: 62px;
+                padding: 10px 14px;
+                gap: 10px;
+            }
+
+            .page-title { font-size: 1.05rem; }
+            .page-subtitle { font-size: 0.72rem; }
+            .header-actions { gap: 6px; }
+
+            /* Badge status memakan lebar yang dibutuhkan tombol; infonya sudah
+               terwakili ikon login di nav bawah. */
+            .header-actions .badge { display: none; }
+
+            /* Empat kartu berjajar ke bawah membuat tabel terdorong jauh.
+               Dua kolom cukup terbaca di layar ponsel. */
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                margin-bottom: 16px;
+            }
+
+            .stat-card { padding: 13px 14px; gap: 11px; }
+            .stat-icon { width: 36px; height: 36px; border-radius: 10px; }
+            .stat-icon i, .stat-icon svg { width: 18px; height: 18px; }
+            .stat-value { font-size: 1.25rem; }
+            .stat-label { font-size: 0.72rem; }
+
+            /* Tab dan pencarian ikut menyempit, bukan memaksa halaman melebar. */
+            .tabs { overflow-x: auto; }
+            .tab { padding: 10px 14px; }
+            /* min-width:220px pada kotak pencarian tidak muat berdampingan
+               dengan dua filter selebar 165px. Beri kotak pencarian barisnya
+               sendiri, lalu kedua filter berbagi baris di bawahnya. */
+            .toolbar { gap: 8px; }
+            .search-box { flex: 1 1 100%; min-width: 0; }
+            select.filter { flex: 1 1 0; min-width: 0; }
+        }
+
+        /* Ponsel sangat sempit: kartu statistik kembali satu kolom penuh supaya
+           angka dan labelnya tidak terpotong. */
+        @media (max-width: 360px) {
+            .stats-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>

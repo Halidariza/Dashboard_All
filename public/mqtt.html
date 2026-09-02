@@ -739,6 +739,56 @@
             border-color: var(--primary-color);
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
         }
+
+        /* ---------- Layar kecil ----------
+           Grid dua kolom (280px + sisa) tidak muat di ponsel, dan penempatan
+           manual grid-column/grid-row memaksa kartu saling menghimpit. Di layar
+           kecil semuanya kembali menumpuk satu kolom mengikuti urutan HTML. */
+        @media (max-width: 720px) {
+            body { padding: 0.75rem 0.75rem 1.25rem; }
+
+            /* Margin negatif header dipatok -1.25rem mengikuti padding body versi
+               desktop. Karena padding body ikut mengecil, nilainya harus
+               disamakan - kalau tidak, header meleset keluar layar dan judulnya
+               menimpa badge status. */
+            header {
+                margin: -0.75rem -0.75rem 1rem;
+                padding: 0.7rem 0.9rem;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            /* Judul dipasang absolute + translateX di desktop supaya benar-benar
+               di tengah; di ponsel itu membuatnya menimpa jam dan badge status.
+               Kembalikan ke aliran normal dan beri barisnya sendiri. */
+            header h1 {
+                position: static;
+                transform: none;
+                left: auto;
+                flex: 1 1 100%;
+                order: -1;
+                text-align: center;
+                font-size: 1.05rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+                grid-template-rows: none;
+                gap: 0.85rem;
+            }
+
+            .card-info,
+            .card-topic-mgmt,
+            .card-stats,
+            .card-tree,
+            .card-publish {
+                grid-column: auto;
+                grid-row: auto;
+                height: auto;
+            }
+
+            .broker-options { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }
+        }
     </style>
 </head>
 

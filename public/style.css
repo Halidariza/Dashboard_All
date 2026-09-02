@@ -682,3 +682,37 @@ footer {
         transform: translateY(0);
     }
 }
+
+/* ---------- Portal di layar kecil ----------
+   padding-left 120px milik desktop menyisakan lebar terlalu sempit di ponsel,
+   sehingga tiga pintasan menumpuk memanjang ke bawah. Di layar kecil kontennya
+   dipusatkan dan disusun dua kolom. */
+@media (max-width: 720px) {
+    .dashboard-body {
+        align-items: center;
+        justify-content: center;
+        overflow-y: auto;
+    }
+
+    .dashboard-container {
+        padding: 28px 18px;
+        width: 100%;
+    }
+
+    .icon-grid {
+        gap: 26px 14px;
+        justify-content: center;
+    }
+
+    .grid-item { width: calc(50% - 14px); }
+
+    .icon-wrapper { width: 64px; height: 64px; }
+
+    .app-logo,
+    .icon-wrapper i,
+    .icon-wrapper svg { width: 46px; height: 46px; }
+
+    .grid-item span { font-size: 0.92rem; }
+
+    .splash-logo { max-width: 62%; }
+}
