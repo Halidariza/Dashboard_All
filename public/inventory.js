@@ -72,7 +72,10 @@
         $(id).classList.remove('show');
         if (id === 'outModal' && photoOut) photoOut.stop();
         if (id === 'returnModal' && photoReturn) photoReturn.stop();
-        if (id === 'assetModal' && photoAsset) photoAsset.stop();
+        if (id === 'assetModal') {
+            if (photoAsset) photoAsset.stop();
+            hapusFormAset();   // ditutup dengan sengaja -> titipan tidak perlu lagi
+        }
     }
 
     function busy(btn, isBusy, label) {
@@ -514,6 +517,83 @@
         $('f-nama').focus();
     }
 
+    // ============================================================
+    // PENYELAMAT ISIAN FORM ASET
+    // ============================================================
+    // Menekan "Ambil Foto" di ponsel memindahkan layar ke aplikasi kamera
+    // bawaan. Kalau memori sedang sesak, Android mematikan tab Chrome yang
+    // ditinggalkan; saat kembali, halaman dimuat ulang dari nol dan seluruh
+    // isian form ikut hilang. Isian karena itu dititipkan ke sessionStorage
+    // sebelum layar ditinggalkan, lalu dipasang kembali setelah data selesai
+    // dimuat.
+    var KUNCI_FORM_ASET = 'chickin_form_aset';
+
+    function simpanFormAset() {
+        if (!$('assetModal').classList.contains('show')) return;
+
+        var isi = {
+            editingId: editingId,
+            nama: $('f-nama').value,
+            kategori: $('f-kategori').value,
+            merk: $('f-merk').value,
+            kondisi: $('f-kondisi').value,
+            lokasi: $('f-lokasi').value,
+            status: $('f-status').value,
+            tglMasuk: $('f-tglMasuk').value,
+            jumlah: $('f-jumlah').value,
+            foto: photoAsset ? photoAsset.value() : null
+        };
+
+        try {
+            sessionStorage.setItem(KUNCI_FORM_ASET, JSON.stringify(isi));
+        } catch (e) {
+            // Foto bisa membuat jatah sessionStorage penuh - simpan tanpa foto
+            // supaya isian teksnya tetap selamat.
+            isi.foto = null;
+            try { sessionStorage.setItem(KUNCI_FORM_ASET, JSON.stringify(isi)); } catch (e2) { /* menyerah */ }
+        }
+    }
+
+    function hapusFormAset() {
+        try { sessionStorage.removeItem(KUNCI_FORM_ASET); } catch (e) { /* abaikan */ }
+    }
+
+    function pulihkanFormAset() {
+        var mentah;
+        try { mentah = sessionStorage.getItem(KUNCI_FORM_ASET); } catch (e) { return; }
+        if (!mentah) return;
+
+        var isi;
+        try { isi = JSON.parse(mentah); } catch (e) { hapusFormAset(); return; }
+
+        // Dropdown baru terisi setelah getMaster selesai, jadi fungsi ini
+        // sengaja dipanggil di akhir loadAll.
+        editingId = isi.editingId || null;
+        $('assetModalTitle').textContent = editingId ? 'Edit Aset - ' + editingId : 'Tambah Aset';
+        $('f-id').value = editingId || '';
+        $('f-nama').value = isi.nama || '';
+        $('f-merk').value = isi.merk || '';
+        $('f-lokasi').value = isi.lokasi || '';
+        setSelectValue($('f-kategori'), isi.kategori);
+        setSelectValue($('f-kondisi'), isi.kondisi);
+        setSelectValue($('f-status'), isi.status);
+        $('f-tglMasuk').value = isi.tglMasuk || '';
+        $('f-jumlah').value = isi.jumlah || '1';
+        $('jumlahField').style.display = editingId ? 'none' : 'flex';
+
+        if (photoAsset) {
+            photoAsset.reset();
+            photoAsset.set(isi.foto);
+        }
+
+        openModal('assetModal');
+
+        toast(isi.foto
+            ? 'Isian dan foto sebelumnya dipulihkan.'
+            : 'Isian sebelumnya dipulihkan. Fotonya ikut hilang saat halaman dimuat ulang - silakan ambil ulang.',
+            isi.foto ? 'success' : 'error');
+    }
+
     function saveAsset() {
         var nama = $('f-nama').value.trim();
         if (!nama) {
@@ -726,7 +806,10 @@
             bind: bind,
             reset: reset,
             stop: stopCamera,
-            value: function () { return dataUrl; }
+            value: function () { return dataUrl; },
+
+            // Dipakai saat memulihkan form setelah halaman dimuat ulang.
+            set: function (url) { if (url) setPhoto(url); }
         };
     }
 
@@ -1441,7 +1524,13 @@
             confirmCallback = null;
         });
 
-        loadAll();
+        // Layar berpindah ke aplikasi kamera / galeri -> titipkan isian dulu.
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') simpanFormAset();
+        });
+        window.addEventListener('pagehide', simpanFormAset);
+
+        loadAll().then(pulihkanFormAset);
     }
 
     if (document.readyState === 'loading') {

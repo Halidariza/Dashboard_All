@@ -15,3 +15,6 @@ Thumbs.db
 
 # Runtime state (dibuat ulang otomatis oleh server.js)
 data/
+
+# Rekaman layar untuk pelaporan bug (tidak perlu masuk repo)
+*.mp4
