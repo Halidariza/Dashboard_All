@@ -672,14 +672,14 @@ async function callInventoryGas(payload) {
 }
 
 // Folder Drive tempat foto dokumen peminjaman disimpan.
-const PEMINJAMAN_FOLDER_ID = process.env.PEMINJAMAN_FOLDER_ID || '1EXK0tqLjjH1qUugdGuG04GZnS1trcDaJ';
+const PEMINJAMAN_FOLDER_ID = process.env.PEMINJAMAN_FOLDER_ID || '1BAT-cLypnvr0RSto5FylT7bffCuRLBOA';
 
 // Folder Drive tempat foto bukti pengembalian disimpan.
-const PENGEMBALIAN_FOLDER_ID = process.env.PENGEMBALIAN_FOLDER_ID || '1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM';
+const PENGEMBALIAN_FOLDER_ID = process.env.PENGEMBALIAN_FOLDER_ID || '1NGavvjShJHkasmUvSBS-d7-mq-HtwU0G';
 
 // Folder Drive tempat foto aset baru disimpan.
-// https://drive.google.com/drive/folders/1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V
-const ASET_FOLDER_ID = process.env.ASET_FOLDER_ID || '1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V';
+// https://drive.google.com/drive/folders/19IVhj6ZnBVGEGpXpoWg6osAv-Z0uby-2
+const ASET_FOLDER_ID = process.env.ASET_FOLDER_ID || '19IVhj6ZnBVGEGpXpoWg6osAv-Z0uby-2';
 
 // Link foto yang belum berhasil ditulis ke kolom Document (Apps Script versi lama
 // belum punya action setDocument). Disimpan lokal, lalu ditambal otomatis

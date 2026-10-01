@@ -17,14 +17,22 @@
  */
 
 // ---------- KONFIGURASI ----------
-var SPREADSHEET_ID = '1IbKZWf9sOLyADxx2Et-ZKZy1Y6CF6FdA8m1oLoFPw8Q';
+var SPREADSHEET_ID = '1S-XXqjpK8oMoIAE-zQl-VlIpafWV1NDzLHJsneGLTXU';
 
 // Sheet dipetakan lewat GID (bukan nama) supaya aman kalau tab di-rename.
-var GID_INVENTORY = 0;          // Id, Nama Aset, Kategori, Merk, Kondisi, Lokasi, Status, Tgl Masuk, Umur
-var GID_KELUAR = 415162369;     // Peminjaman: Tanggal, Id, Nama Aset, Kategori, Merk, Kondisi Keluar, Lokasi, Status, Tgl Rencana Kembali, Document
-var GID_MASTER = 631641782;     // Nama Aset, Kategori, Merk, Kondisi, Lokasi, Status
+// Angka di bawah milik spreadsheet di atas - GID melekat pada satu spreadsheet.
+// Kalau SPREADSHEET_ID diganti, jalankan action 'listSheets' untuk mendapatkan
+// GID yang baru, jangan menebak.
+var GID_INVENTORY = 1285045192; // tab "Asset"      : Id, Nama Aset, Kategori, Merk, Kondisi, Lokasi, Status, Tgl Masuk, Umur, Dokumen
+var GID_KELUAR = 2006783089;    // tab "Peminjaman" : Tanggal, Id, Nama Aset, Kategori, Merk, Kondisi Keluar, Lokasi, Status, Tgl Rencana Kembali, Document
 
-var SCRIPT_VERSION = '2026-09-02-c-id-rapat';
+// Spreadsheet ini tidak punya tab Master - daftar pilihan form diambil dari tab
+// "Dropdown" dan dari nilai yang sudah terpakai. sheetMasterAman() menangkap
+// error "gid tidak ditemukan" dan mengembalikan null, jadi -1 aman dan jelas
+// maksudnya: sengaja tidak ada, bukan angka sisa spreadsheet lama.
+var GID_MASTER = -1;
+
+var SCRIPT_VERSION = '2026-10-01-spreadsheet-asset-baru';
 
 // Sheet berisi daftar pilihan form. Tiap kolom = satu field (Kategori, Kondisi,
 // Status, dst), isi di bawah header = pilihannya. Dicari berdasarkan nama tab.
@@ -59,16 +67,16 @@ var ID_KODE_TETAP = '20200729';
 var TZ = 'Asia/Jakarta';
 
 // Folder Drive tujuan upload foto dokumen peminjaman.
-// https://drive.google.com/drive/folders/1EXK0tqLjjH1qUugdGuG04GZnS1trcDaJ
-var DRIVE_FOLDER_ID = '1EXK0tqLjjH1qUugdGuG04GZnS1trcDaJ';
+// https://drive.google.com/drive/folders/1BAT-cLypnvr0RSto5FylT7bffCuRLBOA
+var DRIVE_FOLDER_ID = '1BAT-cLypnvr0RSto5FylT7bffCuRLBOA';
 
 // Folder Drive tujuan upload foto bukti pengembalian.
-// https://drive.google.com/drive/folders/1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM
-var DRIVE_FOLDER_PENGEMBALIAN_ID = '1iFXpuLIqqMt2-XgCcBB7WOcCiBnW7GXM';
+// https://drive.google.com/drive/folders/1NGavvjShJHkasmUvSBS-d7-mq-HtwU0G
+var DRIVE_FOLDER_PENGEMBALIAN_ID = '1NGavvjShJHkasmUvSBS-d7-mq-HtwU0G';
 
 // Folder Drive tujuan upload foto aset (dipakai saat menambah aset baru).
-// https://drive.google.com/drive/folders/1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V
-var DRIVE_FOLDER_ASET_ID = '1PmsCpqVZ2041apP-hf_25MSeCvAIvk-V';
+// https://drive.google.com/drive/folders/19IVhj6ZnBVGEGpXpoWg6osAv-Z0uby-2
+var DRIVE_FOLDER_ASET_ID = '19IVhj6ZnBVGEGpXpoWg6osAv-Z0uby-2';
 
 // Header baku tiap sheet (dipakai saat sheet masih kosong)
 var HEADER_INVENTORY = ['Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status', 'Tgl Masuk', 'Umur', 'Dokumen'];
@@ -107,6 +115,7 @@ function handleRequest(e) {
 
         switch (action) {
             case 'ping': output = { status: 'success', message: 'Inventory API aktif', version: SCRIPT_VERSION, time: nowString() }; break;
+            case 'listSheets': output = listSheets(); break;
             case 'bootstrap': output = bootstrap(); break;
             case 'getInventory': output = getInventory(); break;
             case 'getMaster': output = getMaster(); break;
@@ -146,6 +155,41 @@ function handleRequest(e) {
 // ============================================================
 function getSS() {
     return SpreadsheetApp.openById(SPREADSHEET_ID);
+}
+
+/**
+ * Daftar semua tab beserta GID dan judul kolomnya.
+ *
+ * Dipakai saat spreadsheet diganti: GID melekat pada satu spreadsheet, jadi
+ * GID_INVENTORY / GID_KELUAR / GID_MASTER di atas harus diisi ulang dengan
+ * angka dari spreadsheet yang baru. Action ini menyebutkannya sekaligus
+ * supaya tidak perlu dibuka satu per satu di browser.
+ */
+function listSheets() {
+    var sheets = getSS().getSheets();
+
+    var daftar = sheets.map(function (s) {
+        var header = [];
+
+        if (s.getLastRow() > 0 && s.getLastColumn() > 0) {
+            header = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0]
+                .filter(function (h) { return String(h).trim() !== ''; });
+        }
+
+        return {
+            nama: s.getName(),
+            gid: s.getSheetId(),
+            baris: s.getLastRow(),
+            kolom: header
+        };
+    });
+
+    return {
+        status: 'success',
+        spreadsheetId: SPREADSHEET_ID,
+        nama: getSS().getName(),
+        sheets: daftar
+    };
 }
 
 /** Ambil sheet berdasarkan GID. */
