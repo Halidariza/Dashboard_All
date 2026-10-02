@@ -117,6 +117,7 @@ function handleRequest(e) {
             case 'ping': output = { status: 'success', message: 'Inventory API aktif', version: SCRIPT_VERSION, time: nowString() }; break;
             case 'listSheets': output = listSheets(); break;
             case 'bootstrap': output = bootstrap(); break;
+            case 'getAll': output = getAll(); break;
             case 'getInventory': output = getInventory(); break;
             case 'getMaster': output = getMaster(); break;
             case 'getKeluar': output = getKeluar(); break;
@@ -745,6 +746,70 @@ function getMaster() {
     };
 }
 
+// Opsi form adalah bagian paling mahal di getMaster: ia memeriksa aturan data
+// validation kolom per kolom, dan tiap panggilan API spreadsheet adalah satu
+// perjalanan ke backend. Isinya hampir tidak pernah berubah, jadi disimpan di
+// cache dan dibuang begitu ada nilai baru masuk (lihat syncMaster/addMaster).
+var CACHE_KEY_OPSI = 'opsi-form-v1';
+
+// Sengaja pendek. Cache ini hanya memuat DAFTAR PILIHAN form - bukan data aset,
+// yang selalu dibaca langsung dari sheet. Tapi tab Dropdown juga disunting
+// manual, dan menunggu 10 menit sampai pilihan baru muncul terasa seperti
+// kerusakan. Dua menit cukup untuk menahan ledakan panggilan tanpa membuat
+// suntingan manual terasa diabaikan.
+var CACHE_TTL_OPSI = 120;   // detik
+
+function getMasterCached() {
+    var cache = null;
+    try { cache = CacheService.getScriptCache(); } catch (e) { cache = null; }
+
+    if (cache) {
+        var hit = cache.get(CACHE_KEY_OPSI);
+        if (hit) {
+            try { return JSON.parse(hit); } catch (e) { /* cache rusak - hitung ulang */ }
+        }
+    }
+
+    var hasil = getMaster();
+
+    // Cache per kunci dibatasi 100KB; daftar opsi jauh di bawah itu, tapi kalau
+    // sampai gagal biarkan saja - hasilnya tetap benar, hanya tidak dipercepat.
+    if (cache) {
+        try { cache.put(CACHE_KEY_OPSI, JSON.stringify(hasil), CACHE_TTL_OPSI); } catch (e) { /* abaikan */ }
+    }
+
+    return hasil;
+}
+
+function lupakanOpsi() {
+    try { CacheService.getScriptCache().remove(CACHE_KEY_OPSI); } catch (e) { /* abaikan */ }
+}
+
+/**
+ * Semua data yang dibutuhkan halaman inventory dalam SATU eksekusi.
+ *
+ * Sebelumnya halaman memanggil getInventory, getKeluar, dan getMaster terpisah.
+ * Ongkos tetap sekali panggil Apps Script 5-38 detik - jauh lebih besar daripada
+ * biaya membaca sheet-nya sendiri - sehingga tiga panggilan berarti membayar
+ * ongkos itu tiga kali. Digabung jadi satu.
+ */
+function getAll() {
+    var inv = getInventory();
+    var kel = getKeluar();
+    var opsi = getMasterCached();
+
+    return {
+        status: 'success',
+        inventory: inv.items,
+        totalInventory: inv.total,
+        keluar: kel.items,
+        totalKeluar: kel.total,
+        options: opsi.options,
+        sumber: opsi.sumber,
+        dropdownCount: opsi.dropdownCount
+    };
+}
+
 function getStats() {
     var inv = getInventory();
     var keluar = getKeluar();
@@ -827,6 +892,10 @@ function addAsset(data) {
         // Simpan nilai baru ke sheet Master supaya jadi opsi dropdown berikutnya
         syncMaster(data);
 
+        // Nilai baru (lokasi/merk/nama) ikut jadi opsi form - cache opsi harus dibuang,
+        // kalau tidak form masih menampilkan daftar lama sampai 10 menit ke depan.
+        lupakanOpsi();
+
         return {
             status: 'success',
             message: jumlah > 1 ? jumlah + ' aset berhasil ditambahkan.' : 'Aset berhasil ditambahkan.',
@@ -876,6 +945,7 @@ function updateAsset(data) {
     }
 
     syncMaster(data);
+    lupakanOpsi();
 
     return { status: 'success', message: 'Aset ' + data.id + ' berhasil diperbarui.' };
 }
@@ -1366,6 +1436,8 @@ function addMaster(data) {
         data.lokasi || '',
         data.status || ''
     ]);
+
+    lupakanOpsi();
 
     return { status: 'success', message: 'Data master ditambahkan.' };
 }

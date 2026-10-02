@@ -451,15 +451,30 @@
     function loadAll(silent) {
         if (!silent) $('conn-status').textContent = 'Memuat data...';
 
-        return Promise.all([
-            api('getInventory'),
-            api('getKeluar'),
-            api('getMaster')
-        ])
+        // Satu panggilan untuk semuanya. Apps Script memungut ongkos tetap yang
+        // besar tiap kali dipanggil (5-38 detik, bahkan untuk aksi yang tidak
+        // menyentuh spreadsheet), jadi tiga panggilan terpisah membuat halaman
+        // menunggu tiga kali lebih lama tanpa alasan.
+        return api('getAll')
+            .catch(function () {
+                // Deployment Apps Script lama belum mengenal getAll - pakai cara lama
+                // supaya halaman tetap hidup sampai deployment-nya diperbarui.
+                return Promise.all([
+                    api('getInventory'),
+                    api('getKeluar'),
+                    api('getMaster')
+                ]).then(function (res) {
+                    return {
+                        inventory: res[0].items,
+                        keluar: res[1].items,
+                        options: res[2].options
+                    };
+                });
+            })
             .then(function (res) {
-                assets = res[0].items || [];
-                keluar = res[1].items || [];
-                options = res[2].options || {};
+                assets = res.inventory || [];
+                keluar = res.keluar || [];
+                options = res.options || {};
 
                 renderStats();
                 renderFilters();

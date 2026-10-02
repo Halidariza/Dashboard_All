@@ -833,6 +833,52 @@ async function uploadFotoDokumen(body) {
     throw new Error(`Upload gagal. GAS Inventory: ${primaryError}. Drive Connector: ${lastError}`);
 }
 
+// ------------------------------------------------------------
+// CACHE HASIL getAll
+// ------------------------------------------------------------
+// Satu panggilan Apps Script memakan 5-38 detik, dan ukurannya didominasi ongkos
+// tetap sekali panggil - bukan biaya membaca sheet. Halaman inventory dibuka
+// berkali-kali sehari dengan isi yang sama, jadi hasilnya ditahan sebentar.
+//
+// PENTING: cache ini TIDAK PERNAH menyajikan data basi.
+//
+// Versi sebelumnya menyajikan hasil lama sambil menyegarkan di belakang. Itu
+// memang membuat halaman terasa seketika, tapi pengguna yang baru mengetik
+// langsung di spreadsheet lalu me-refresh dashboard masih melihat angka lama -
+// dan harus refresh beberapa kali sampai datanya sama. Kesegaran lebih penting
+// daripada kecepatan di sini, jadi pola itu dibuang.
+//
+// Yang tersisa hanya jendela sangat pendek untuk meredam ledakan permintaan:
+// beberapa tab yang dibuka berbarengan, atau satu halaman yang memuat dua kali.
+// Manusia yang menekan refresh selalu melewati jendela ini, jadi ia selalu
+// mendapat data terbaru.
+const GETALL_SEGAR_MS = 5 * 1000;
+
+let getAllCache = null;      // { data, waktu }
+let getAllInflight = null;   // satu panggilan berjalan dipakai bersama
+
+function ambilGetAll() {
+    // Tanpa penjaga ini, lima tab yang dibuka bersamaan menjadi lima eksekusi
+    // Apps Script yang saling mengantre dan justru memperlambat semuanya.
+    if (getAllInflight) return getAllInflight;
+
+    getAllInflight = callInventoryGas({ action: 'getAll' })
+        .then(res => {
+            if (res && res.status === 'success') getAllCache = { data: res, waktu: Date.now() };
+            return res;
+        })
+        .finally(() => { getAllInflight = null; });
+
+    return getAllInflight;
+}
+
+function lupakanGetAll() {
+    getAllCache = null;
+}
+
+// Aksi yang mengubah isi sheet - cache harus dibuang supaya perubahan langsung terlihat.
+const AKSI_TULIS = ['addAsset', 'updateAsset', 'deleteAsset', 'checkOut', 'checkIn', 'addMaster'];
+
 // Kolom Umur di spreadsheet disegarkan maksimal sekali sehari.
 let umurRefreshedOn = null;
 
@@ -863,6 +909,25 @@ app.post('/api/inventory', async (req, res) => {
         console.log(`📦 Inventory action: ${action}`);
 
         let result;
+
+        if (action === 'getAll') {
+            const umur = getAllCache ? Date.now() - getAllCache.waktu : Infinity;
+
+            // Hanya meredam permintaan yang datang nyaris bersamaan.
+            if (umur < GETALL_SEGAR_MS) {
+                return res.json(Object.assign({}, getAllCache.data, { cache: 'segar' }));
+            }
+
+            // Selebihnya selalu ambil dari spreadsheet - termasuk tiap kali
+            // pengguna menekan refresh.
+            result = await ambilGetAll();
+
+            if (result && result.status === 'success') refreshUmurSekaliSehari();
+
+            return res.json(Object.assign({}, result, { cache: 'baru' }));
+        }
+
+        if (AKSI_TULIS.indexOf(action) > -1) lupakanGetAll();
 
         if (action === 'uploadDocument') {
             result = await uploadFotoDokumen(req.body);
