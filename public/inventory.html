@@ -516,6 +516,12 @@
         }
 
         select.filter:focus,
+        .form-field input[readonly] {
+            background: #f1f5f9;
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
         .form-field input:focus,
         .form-field select:focus {
             border-color: var(--primary);
@@ -858,6 +864,270 @@
             font-weight: 400;
         }
 
+        /* ---------- Pilihan jenis aset (langkah pertama Tambah Aset) ---------- */
+        .mode-intro {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .mode-card {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--white);
+            padding: 18px 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 8px;
+            cursor: pointer;
+            text-align: left;
+            font: inherit;
+            color: var(--text-main);
+            transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+        }
+
+        .mode-card:hover,
+        .mode-card:focus-visible {
+            border-color: var(--primary);
+            box-shadow: 0 4px 14px rgba(66, 92, 109, 0.15);
+            transform: translateY(-2px);
+            outline: none;
+        }
+
+        .mode-card.mode-card-alt {
+            background: #f8fafc;
+            border-style: dashed;
+        }
+
+        .mode-card .mode-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: #eef2f5;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mode-card .mode-icon i {
+            width: 20px;
+            height: 20px;
+        }
+
+        .mode-card .mode-title {
+            font-size: 0.92rem;
+            font-weight: 600;
+        }
+
+        .mode-card .mode-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }
+
+        /* Penanda jenis aset di atas form, lengkap dengan tautan untuk ganti pilihan */
+        .mode-banner {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            margin-bottom: 16px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: #f8fafc;
+            font-size: 0.8rem;
+        }
+
+        .mode-banner.show {
+            display: flex;
+        }
+
+        .mode-banner i {
+            width: 16px;
+            height: 16px;
+            color: var(--primary);
+        }
+
+        .mode-banner .mode-banner-text strong {
+            font-weight: 600;
+        }
+
+        /* ---------- Tab Group & Isinya ---------- */
+        .group-card {
+            background: var(--white);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .group-card-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            cursor: pointer;
+        }
+
+        .group-card-head:hover {
+            background: #f8fafc;
+        }
+
+        .group-card-head .chev {
+            width: 16px;
+            height: 16px;
+            color: var(--text-muted);
+            transition: transform 0.15s;
+            flex-shrink: 0;
+        }
+
+        .group-card.open .group-card-head .chev {
+            transform: rotate(90deg);
+        }
+
+        .group-card-title {
+            font-weight: 600;
+            font-size: 0.92rem;
+        }
+
+        .group-card-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .group-card-id {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .group-card-body {
+            display: none;
+            border-top: 1px solid var(--border-color);
+            padding: 6px 16px 14px;
+        }
+
+        .group-card.open .group-card-body {
+            display: block;
+        }
+
+        .group-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 0;
+            font-size: 0.85rem;
+            border-bottom: 1px dashed var(--border-color);
+        }
+
+        .group-item:last-child {
+            border-bottom: none;
+        }
+
+        .group-item .qty {
+            margin-left: auto;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        .group-item mark,
+        .group-card-title mark {
+            background: #fde68a;
+            color: inherit;
+            border-radius: 3px;
+            padding: 0 1px;
+        }
+
+        .group-isi {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .item-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .item-row {
+            display: grid;
+            grid-template-columns: 1fr 112px 70px 34px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .item-row input,
+        .item-row select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-family: inherit;
+        }
+
+        .item-row input:focus,
+        .item-row select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .item-empty {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .group-list .group-chip {
+            cursor: pointer;
+        }
+
+        .group-list .group-chip.active {
+            border-color: var(--primary);
+            background: #eef2f5;
+            color: var(--text-main);
+            font-weight: 600;
+        }
+
+        .group-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .group-list .group-chip {
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 3px 10px;
+            background: #f8fafc;
+        }
+
+        .mode-banner .link-btn {
+            margin-left: auto;
+            background: none;
+            border: none;
+            padding: 0;
+            font: inherit;
+            font-size: 0.78rem;
+            color: var(--primary);
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
         /* ---------- Foto dokumen ---------- */
         .photo-box {
             border: 1px dashed var(--border-color);
@@ -993,6 +1263,7 @@
 
         @media (max-width: 720px) {
             .form-grid { grid-template-columns: 1fr; }
+            .mode-grid { grid-template-columns: 1fr; }
 
             /* Ruang bawah disisakan untuk nav yang kini menempel di dasar layar. */
             .content { padding: 16px 14px calc(84px + env(safe-area-inset-bottom)); }
@@ -1212,6 +1483,7 @@
             <!-- Tabs -->
             <div class="tabs">
                 <button class="tab active" data-tab="aset">Data Aset</button>
+                <button class="tab" data-tab="group">Group &amp; Isinya</button>
                 <button class="tab" data-tab="keluar">Riwayat Peminjaman</button>
             </div>
 
@@ -1254,6 +1526,23 @@
                         <i data-lucide="package-open"></i>
                         <p id="assetEmptyText">Belum ada data aset.</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- TAB: Group & Isinya -->
+            <div id="tab-group" style="display:none;">
+                <div class="toolbar">
+                    <div class="search-box">
+                        <i data-lucide="search"></i>
+                        <input type="text" id="searchGroup" placeholder="Cari nama group atau nama item...">
+                    </div>
+                </div>
+
+                <div id="groupCards"></div>
+
+                <div class="empty-state" id="groupEmpty" style="display:none;">
+                    <i data-lucide="layers"></i>
+                    <p id="groupEmptyText">Belum ada group.</p>
                 </div>
             </div>
 
@@ -1304,9 +1593,44 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="f-id">
+
+                <!-- Langkah 1: pilih dulu jenis asetnya -->
+                <div id="assetModeStep">
+                    <p class="mode-intro">Pilih dulu jenis aset yang mau dicatat.</p>
+                    <div class="mode-grid">
+                        <button type="button" class="mode-card" data-asset-mode="individu">
+                            <span class="mode-icon"><i data-lucide="package"></i></span>
+                            <span class="mode-title">Aset Individu</span>
+                            <span class="mode-desc">Satu barang, satu Id. Cocok untuk aset bernomor seri
+                                seperti laptop atau proyektor.</span>
+                        </button>
+                        <button type="button" class="mode-card" data-asset-mode="group">
+                            <span class="mode-icon"><i data-lucide="layers"></i></span>
+                            <span class="mode-title">Group Aset</span>
+                            <span class="mode-desc">Masukkan item ke dalam salah satu group, mis. Obeng ke
+                                Toolbox. Item tidak ber-Id sendiri - yang dipinjam groupnya.</span>
+                        </button>
+                        <button type="button" class="mode-card mode-card-alt" id="openGroupBtn">
+                            <span class="mode-icon"><i data-lucide="folder-plus"></i></span>
+                            <span class="mode-title">Tambah Group</span>
+                            <span class="mode-desc">Buat group baru. Group langsung dapat Id sendiri dan
+                                muncul di tabel, siap dipinjam.</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Langkah 2: isian aset -->
+                <div id="assetFormStep" style="display:none;">
+                <div class="mode-banner" id="assetModeBanner">
+                    <i data-lucide="info"></i>
+                    <span class="mode-banner-text">Jenis: <strong id="assetModeLabel"></strong></span>
+                    <button type="button" class="link-btn" id="assetModeChangeBtn">Ganti</button>
+                </div>
                 <div class="form-grid">
                     <div class="form-field full">
-                        <label for="f-nama">Nama Aset <span style="color:#ef4444">*</span></label>
+                        <label for="f-nama"><span id="namaLabelText">Nama Aset</span>
+                            <span style="color:#ef4444">*</span>
+                            <span class="hint" id="namaHint" style="display:none;"></span></label>
                         <input type="text" id="f-nama" list="dl-nama" placeholder="mis. Penggaris">
                         <datalist id="dl-nama"></datalist>
                     </div>
@@ -1336,8 +1660,17 @@
                         <label for="f-tglMasuk">Tgl Masuk</label>
                         <input type="date" id="f-tglMasuk">
                     </div>
+                    <div class="form-field full" id="groupField" style="display:none;">
+                        <label for="f-group">Group <span style="color:#ef4444">*</span>
+                            <span class="hint">(nama group dipakai sebagai nama aset)</span></label>
+                        <select id="f-group">
+                            <option value="">-- pilih group --</option>
+                        </select>
+                        <div class="group-isi" id="f-groupIsi"></div>
+                    </div>
                     <div class="form-field full" id="jumlahField">
-                        <label for="f-jumlah">Jumlah Unit <span class="hint">(tiap unit dapat Id sendiri)</span></label>
+                        <label for="f-jumlah"><span id="jumlahLabelText">Jumlah Unit</span>
+                            <span class="hint" id="jumlahHint">(tiap unit dapat Id sendiri)</span></label>
                         <input type="number" id="f-jumlah" value="1" min="1" max="50">
                     </div>
                     <div class="form-field full">
@@ -1393,10 +1726,68 @@
                         <canvas id="a-canvas" style="display:none;"></canvas>
                     </div>
                 </div>
+                </div>
             </div>
             <div class="modal-footer">
+                <button class="btn btn-ghost" id="assetBackBtn" style="margin-right:auto; display:none;">
+                    <i data-lucide="arrow-left"></i> Kembali
+                </button>
                 <button class="btn btn-ghost" data-close="assetModal">Batal</button>
                 <button class="btn btn-primary" id="saveAssetBtn"><i data-lucide="save"></i> Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Tambah Group -->
+    <div class="modal-overlay" id="groupModal">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header">
+                <h3 id="groupModalTitle">Tambah Group</h3>
+                <button class="icon-btn" data-close="groupModal"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-grid">
+                    <div class="form-field full">
+                        <label for="g-nama">Nama Group <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="g-nama" placeholder="mis. Peralatan Kandang A">
+                    </div>
+                    <div class="form-field full">
+                        <label for="g-keterangan">Keterangan <span class="hint">(opsional)</span></label>
+                        <input type="text" id="g-keterangan" placeholder="mis. aset milik divisi produksi">
+                    </div>
+                    <div class="form-field">
+                        <label for="g-kategori">Kategori</label>
+                        <select id="g-kategori"></select>
+                    </div>
+                    <div class="form-field">
+                        <label for="g-lokasi">Lokasi</label>
+                        <input type="text" id="g-lokasi" list="dl-lokasi" placeholder="mis. A1">
+                    </div>
+                    <div class="form-field full">
+                        <label for="g-status">Status <span class="hint">(status group saat dipinjam)</span></label>
+                        <select id="g-status"></select>
+                    </div>
+
+                    <div class="form-field full">
+                        <label>Isi Group
+                            <span class="hint">(item di dalamnya - tidak ber-Id sendiri)</span></label>
+                        <div class="item-list" id="g-items"></div>
+                        <button type="button" class="btn btn-ghost" id="g-addItemBtn"
+                            style="align-self:flex-start; margin-top:8px;">
+                            <i data-lucide="plus"></i> Tambah Item
+                        </button>
+                    </div>
+
+                    <div class="form-field full">
+                        <label>Group yang sudah ada
+                            <span class="hint">(klik untuk mengubah isinya)</span></label>
+                        <div id="groupList" class="group-list"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" data-close="groupModal">Batal</button>
+                <button class="btn btn-primary" id="saveGroupBtn"><i data-lucide="save"></i> Simpan</button>
             </div>
         </div>
     </div>

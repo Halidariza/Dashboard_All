@@ -49,6 +49,15 @@ var KOL_KANDIDAT = 'Kandidat';
 
 // Catatan hasil undian. Dibuat otomatis kalau tabnya belum ada.
 var NAMA_SHEET_HISTORY_PETUGAS = 'History Petugas';
+
+// Daftar kelompok aset. Disimpan di tab sendiri supaya kelompok yang baru dibuat
+// tetap ada walau belum punya anggota - kalau hanya mengandalkan nilai terpakai
+// di kolom Group, kelompok kosong akan hilang dari dropdown.
+var NAMA_SHEET_GROUP = 'Group';
+
+// Isi tiap kelompok. Item di sini TIDAK punya Id sendiri - yang dipinjam adalah
+// groupnya, jadi daftar ini berfungsi sebagai rincian isi, bukan aset terpisah.
+var NAMA_SHEET_ITEM_GROUP = 'Item Group';
 var HEADER_HISTORY_PETUGAS = ['Tanggal', 'Nama Petugas'];
 
 // Judul kolom tab history dicocokkan longgar: tab ini sering dibuat manual dengan
@@ -79,9 +88,11 @@ var DRIVE_FOLDER_PENGEMBALIAN_ID = '1NGavvjShJHkasmUvSBS-d7-mq-HtwU0G';
 var DRIVE_FOLDER_ASET_ID = '19IVhj6ZnBVGEGpXpoWg6osAv-Z0uby-2';
 
 // Header baku tiap sheet (dipakai saat sheet masih kosong)
-var HEADER_INVENTORY = ['Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status', 'Tgl Masuk', 'Umur', 'Dokumen'];
+var HEADER_INVENTORY = ['Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status', 'Tgl Masuk', 'Umur', 'Dokumen', 'Group'];
 var HEADER_KELUAR = ['Tanggal', 'Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi Keluar', 'Lokasi', 'Status', 'Tgl Rencana Kembali', 'Document'];
 var HEADER_MASTER = ['Nama Aset', 'Kategori', 'Merk', 'Kondisi', 'Lokasi', 'Status'];
+var HEADER_GROUP = ['Nama Group', 'Keterangan', 'Dibuat'];
+var HEADER_ITEM_GROUP = ['Nama Group', 'Nama Item', 'Jumlah', 'Kondisi', 'Keterangan'];
 var HEADER_PENGEMBALIAN = ['Tanggal Kembali', 'Id', 'Nama Aset', 'Kategori', 'Merk', 'Kondisi Kembali',
     'Lokasi', 'Status', 'Tanggal Pinjam', 'Tgl Rencana Kembali', 'Terlambat (hari)', 'Document',
     'Foto Pengembalian'];
@@ -128,6 +139,11 @@ function handleRequest(e) {
             case 'checkOut': output = checkOut(data); break;
             case 'checkIn': output = checkIn(data); break;
             case 'addMaster': output = addMaster(data); break;
+            case 'addGroup': output = addGroup(data); break;
+            case 'getGroups': output = getGroups(); break;
+            case 'setGroupItems': output = setGroupItems(data); break;
+            case 'addGroupItem': output = addGroupItem(data); break;
+            case 'updateGroup': output = updateGroup(data); break;
             case 'uploadDocument': output = uploadDocument(data); break;
             case 'checkDrive': output = checkDrive(); break;
             case 'setDocument': output = setDocument(data); break;
@@ -333,6 +349,36 @@ function sheetPengembalian() {
     // Sheet lama dibuat tanpa kolom foto - tambahkan di ujung kanan supaya
     // data yang sudah ada tidak bergeser.
     return ensureExtraColumn(sheet, 'Foto Pengembalian');
+}
+
+/** Tab daftar kelompok - dibuat beserta headernya kalau belum ada. */
+function sheetGroup() {
+    var sheet = sheetByName(NAMA_SHEET_GROUP);
+
+    if (!sheet) {
+        sheet = getSS().insertSheet(NAMA_SHEET_GROUP);
+    }
+
+    ensureHeader(sheet, HEADER_GROUP);
+
+    return sheet;
+}
+
+/** Tab isi kelompok - dibuat beserta headernya kalau belum ada. */
+function sheetItemGroup() {
+    var sheet = sheetByName(NAMA_SHEET_ITEM_GROUP);
+
+    if (!sheet) {
+        sheet = getSS().insertSheet(NAMA_SHEET_ITEM_GROUP);
+    }
+
+    ensureHeader(sheet, HEADER_ITEM_GROUP);
+
+    // Tab yang dibuat sebelum kolom Kondisi ada - tambahkan di ujung kanan
+    // supaya data yang sudah terisi tidak bergeser.
+    pastikanKolom(sheet, 'Kondisi');
+
+    return sheet;
 }
 
 /** Tambahkan satu kolom di ujung kanan sheet kalau headernya belum ada. */
@@ -563,10 +609,12 @@ function bootstrap() {
     if (m) ensureHeader(m, HEADER_MASTER);
     sheetPengembalian();       // dibuat kalau tabnya belum ada
     sheetHistoryPetugas();     // idem
+    sheetGroup();              // idem
+    sheetItemGroup();          // idem
 
     return {
         status: 'success',
-        message: 'Struktur sheet siap digunakan (termasuk tab Pengembalian & History Petugas).'
+        message: 'Struktur sheet siap digunakan (termasuk tab Pengembalian, History Petugas, Group & Item Group).'
     };
 }
 
@@ -586,6 +634,7 @@ function getInventory() {
             tglMasuk: r['Tgl Masuk'] || '',
             umur: hitungUmur(r['Tgl Masuk']) || r['Umur'] || '',
             dokumen: r['Dokumen'] || '',
+            group: r['Group'] || '',
             row: r._row
         };
     });
@@ -723,7 +772,8 @@ function getMaster() {
             kondisi: out['Kondisi'],
             lokasi: out['Lokasi'],
             status: out['Status'],
-            statusKeluar: statusKeluar
+            statusKeluar: statusKeluar,
+            group: daftarGroup()
         },
         // Dari mana daftar tiap field diambil - memudahkan mengecek konfigurasi spreadsheet
         sumber: {
@@ -797,9 +847,15 @@ function getAll() {
     var inv = getInventory();
     var kel = getKeluar();
     var opsi = getMasterCached();
+    var grup = { items: [] };
+
+    // Tab Group baru dibuat pada deployment ini - jangan sampai spreadsheet lama
+    // membuat seluruh halaman gagal dimuat.
+    try { grup = getGroups(); } catch (e) { /* abaikan */ }
 
     return {
         status: 'success',
+        groups: grup.items,
         inventory: inv.items,
         totalInventory: inv.total,
         keluar: kel.items,
@@ -865,8 +921,9 @@ function addAsset(data) {
         var tglMasuk = data.tglMasuk || todayString();
         var created = [];
 
-        // Sheet lama belum punya kolom Dokumen; tambahkan sebelum menulis baris.
+        // Sheet lama belum punya kolom Dokumen & Group; tambahkan sebelum menulis baris.
         pastikanKolom(sheet, 'Dokumen');
+        pastikanKolom(sheet, 'Group');
 
         for (var i = 0; i < jumlah; i++) {
             var newId = generateAssetId(sheet);
@@ -883,7 +940,8 @@ function addAsset(data) {
                 'Status': data.status || 'Tersedia',
                 'Tgl Masuk': tglMasuk,
                 'Umur': hitungUmur(tglMasuk),
-                'Dokumen': data.dokumen || ''
+                'Dokumen': data.dokumen || '',
+                'Group': data.group || ''
             });
 
             created.push(newId);
@@ -914,8 +972,9 @@ function updateAsset(data) {
     var found = findRowById(sheet, data.id);
     if (!found) return { status: 'error', message: 'Aset dengan Id ' + data.id + ' tidak ditemukan.' };
 
-    // Sheet lama belum punya kolom Dokumen - tanpa ini link foto akan hilang diam-diam.
+    // Sheet lama belum punya kolom Dokumen / Group - tanpa ini isinya hilang diam-diam.
     if (data.dokumen) pastikanKolom(sheet, 'Dokumen');
+    if (data.group !== undefined) pastikanKolom(sheet, 'Group');
 
     var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 
@@ -927,7 +986,8 @@ function updateAsset(data) {
         'Lokasi': data.lokasi,
         'Status': data.status,
         'Tgl Masuk': data.tglMasuk,
-        'Dokumen': data.dokumen
+        'Dokumen': data.dokumen,
+        'Group': data.group
     };
 
     Object.keys(mapping).forEach(function (key) {
@@ -1420,6 +1480,355 @@ function testUploadSetup() {
     Logger.log('File uji dihapus. Setup upload OK - lanjut Deploy > Manage deployments > New version.');
 
     return { status: 'success', message: 'Setup upload OK.' };
+}
+
+/**
+ * Daftar kelompok aset.
+ *
+ * Sumbernya tab Group, ditambah nilai yang sudah terpakai di kolom Group sheet
+ * Inventory - supaya kelompok yang pernah dipakai sebelum tab ini ada tidak
+ * hilang dari pilihan.
+ */
+function daftarGroup() {
+    var seen = {};
+    var list = [];
+
+    function tambah(v) {
+        var t = String(v === null || v === undefined ? '' : v).trim();
+        if (!t || seen[t.toLowerCase()]) return;
+        seen[t.toLowerCase()] = true;
+        list.push(t);
+    }
+
+    try {
+        readRows(sheetGroup()).rows.forEach(function (r) { tambah(r['Nama Group']); });
+    } catch (e) {
+        // Tab Group opsional - jangan gagalkan pemuatan halaman
+    }
+
+    try {
+        var inv = sheetByGid(GID_INVENTORY);
+        readRows(inv).rows.forEach(function (r) { tambah(r['Group']); });
+    } catch (e) { /* abaikan */ }
+
+    return list;
+}
+
+/** Isi tiap kelompok, dikelompokkan per nama group (huruf besar/kecil diabaikan). */
+function isiGroupPerNama() {
+    var out = {};
+
+    try {
+        readRows(sheetItemGroup()).rows.forEach(function (r) {
+            var group = String(r['Nama Group'] || '').trim();
+            var nama = String(r['Nama Item'] || '').trim();
+            if (!group || !nama) return;
+
+            var key = group.toLowerCase();
+            if (!out[key]) out[key] = [];
+
+            out[key].push({
+                nama: nama,
+                jumlah: Math.max(1, parseInt(r['Jumlah'] || 1, 10) || 1),
+                kondisi: r['Kondisi'] || '',
+                keterangan: r['Keterangan'] || ''
+            });
+        });
+    } catch (e) {
+        // Tab isi group opsional - jangan gagalkan pemuatan halaman
+    }
+
+    return out;
+}
+
+function getGroups() {
+    var sheet = sheetGroup();
+    var isi = isiGroupPerNama();
+
+    var items = readRows(sheet).rows.map(function (r) {
+        var nama = r['Nama Group'] || '';
+
+        return {
+            nama: nama,
+            keterangan: r['Keterangan'] || '',
+            dibuat: r['Dibuat'] || '',
+            items: isi[String(nama).trim().toLowerCase()] || [],
+            row: r._row
+        };
+    }).filter(function (g) { return g.nama; });
+
+    return { status: 'success', items: items, total: items.length, names: daftarGroup() };
+}
+
+/**
+ * Ganti seluruh isi satu kelompok.
+ *
+ * Barisnya ditimpa, bukan ditambahkan, supaya hasil akhirnya persis seperti yang
+ * terlihat di form - menghapus item di layar berarti barisnya ikut hilang di sheet.
+ */
+function setGroupItems(data) {
+    var group = String(data.nama || '').trim();
+    if (!group) return { status: 'error', message: 'Nama Group wajib diisi.' };
+
+    var sheet = sheetItemGroup();
+    var lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+
+    try {
+        var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        var colGroup = colIndex(header, 'Nama Group');
+        var lastRow = sheet.getLastRow();
+
+        // Dihapus dari bawah ke atas supaya nomor baris di atasnya tidak bergeser.
+        if (colGroup && lastRow > 1) {
+            var kolom = sheet.getRange(2, colGroup, lastRow - 1, 1).getValues();
+
+            for (var i = kolom.length - 1; i >= 0; i--) {
+                if (String(kolom[i][0] || '').trim().toLowerCase() === group.toLowerCase()) {
+                    sheet.deleteRow(i + 2);
+                }
+            }
+        }
+
+        var items = data.items || [];
+        var ditulis = 0;
+
+        for (var j = 0; j < items.length; j++) {
+            var nama = String(items[j].nama || '').trim();
+            if (!nama) continue;
+
+            appendByHeader(sheet, {
+                'Nama Group': group,
+                'Nama Item': nama,
+                'Jumlah': Math.max(1, parseInt(items[j].jumlah || 1, 10) || 1),
+                'Kondisi': items[j].kondisi || '',
+                'Keterangan': items[j].keterangan || ''
+            });
+
+            ditulis++;
+        }
+    } finally {
+        lock.releaseLock();
+    }
+
+    return {
+        status: 'success',
+        message: 'Isi group "' + group + '" disimpan (' + ditulis + ' item).',
+        nama: group,
+        total: ditulis
+    };
+}
+
+/** Buat kelompok baru. Nama kelompok unik - pembandingnya tidak peka huruf besar/kecil. */
+function addGroup(data) {
+    var nama = String(data.nama || '').trim();
+    if (!nama) return { status: 'error', message: 'Nama Group wajib diisi.' };
+
+    var sheet = sheetGroup();
+    var idBaru = '';
+    var lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+
+    try {
+        var sudahAda = readRows(sheet).rows.some(function (r) {
+            return String(r['Nama Group'] || '').trim().toLowerCase() === nama.toLowerCase();
+        });
+
+        if (sudahAda) return { status: 'error', message: 'Group "' + nama + '" sudah ada.' };
+
+        appendByHeader(sheet, {
+            'Nama Group': nama,
+            'Keterangan': data.keterangan || '',
+            'Dibuat': todayString()
+        });
+
+        // Group adalah satuan yang dipinjam, jadi ia perlu baris ber-Id di
+        // Inventory sejak awal - tanpa itu group tidak pernah muncul di daftar
+        // aset maupun di form peminjaman.
+        var inv = ensureHeader(sheetByGid(GID_INVENTORY), HEADER_INVENTORY);
+        pastikanKolom(inv, 'Dokumen');
+        pastikanKolom(inv, 'Group');
+
+        var sudahJadiAset = readRows(inv).rows.some(function (r) {
+            return String(r['Group'] || '').trim().toLowerCase() === nama.toLowerCase();
+        });
+
+        if (!sudahJadiAset) {
+            var tglMasuk = data.tglMasuk || todayString();
+            idBaru = generateAssetId(inv);
+
+            appendByHeader(inv, {
+                'Id': idBaru,
+                'Nama Aset': nama,
+                'Kategori': data.kategori || '',
+                'Merk': data.merk || '',
+                'Kondisi': data.kondisi || 'Baru',
+                'Lokasi': data.lokasi || '',
+                'Status': data.status || 'Tersedia',
+                'Tgl Masuk': tglMasuk,
+                'Umur': hitungUmur(tglMasuk),
+                'Dokumen': '',
+                'Group': nama
+            });
+        }
+    } finally {
+        lock.releaseLock();
+    }
+
+    // Isi awal bersifat opsional - kelompok kosong tetap sah dan bisa diisi nanti.
+    if (data.items && data.items.length) setGroupItems({ nama: nama, items: data.items });
+
+    lupakanOpsi();
+
+    return {
+        status: 'success',
+        message: 'Group "' + nama + '" dibuat' + (idBaru ? ' dengan Id ' + idBaru : '') + '.',
+        nama: nama,
+        id: idBaru,
+        groups: daftarGroup()
+    };
+}
+
+/**
+ * Perbarui sebuah group: keterangan, atribut baris asetnya, dan isinya.
+ *
+ * Baris aset group tidak lagi bisa disunting lewat daftar aset, jadi semua yang
+ * melekat pada group diurus di sini - tanpa ini Kategori/Lokasi/Status sebuah
+ * group tidak akan pernah bisa diisi.
+ */
+function updateGroup(data) {
+    var nama = String(data.nama || '').trim();
+    if (!nama) return { status: 'error', message: 'Nama Group wajib diisi.' };
+
+    var lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+
+    try {
+        // 1. Keterangan di tab Group
+        if (data.keterangan !== undefined) {
+            var gSheet = sheetGroup();
+            var gHeader = gSheet.getRange(1, 1, 1, gSheet.getLastColumn()).getValues()[0];
+            var colKet = colIndex(gHeader, 'Keterangan');
+            var barisGroup = 0;
+
+            readRows(gSheet).rows.forEach(function (r) {
+                if (barisGroup) return;
+                if (String(r['Nama Group'] || '').trim().toLowerCase() === nama.toLowerCase()) {
+                    barisGroup = r._row;
+                }
+            });
+
+            if (barisGroup && colKet) gSheet.getRange(barisGroup, colKet).setValue(data.keterangan);
+        }
+
+        // 2. Baris asetnya di Inventory
+        var inv = ensureHeader(sheetByGid(GID_INVENTORY), HEADER_INVENTORY);
+        pastikanKolom(inv, 'Group');
+
+        var invHeader = inv.getRange(1, 1, 1, inv.getLastColumn()).getValues()[0];
+        var barisAset = 0;
+
+        readRows(inv).rows.forEach(function (r) {
+            if (barisAset) return;
+            if (String(r['Group'] || '').trim().toLowerCase() === nama.toLowerCase()) barisAset = r._row;
+        });
+
+        if (barisAset) {
+            var mapping = {
+                'Kategori': data.kategori,
+                'Merk': data.merk,
+                'Lokasi': data.lokasi,
+                'Status': data.status
+            };
+
+            Object.keys(mapping).forEach(function (key) {
+                var val = mapping[key];
+                if (val === undefined || val === null) return;   // tidak dikirim -> jangan disentuh
+                var col = colIndex(invHeader, key);
+                if (col) inv.getRange(barisAset, col).setValue(val);
+            });
+        }
+    } finally {
+        lock.releaseLock();
+    }
+
+    // setGroupItems memakai lock sendiri - dipanggil setelah lock di atas dilepas.
+    var isi = null;
+    if (data.items) isi = setGroupItems({ nama: nama, items: data.items });
+
+    lupakanOpsi();
+
+    return {
+        status: 'success',
+        message: 'Group "' + nama + '" diperbarui' + (isi ? ' (' + isi.total + ' item)' : '') + '.',
+        nama: nama
+    };
+}
+
+/**
+ * Masukkan satu item ke dalam sebuah group.
+ *
+ * Item TIDAK diberi Id dan tidak menambah baris di Inventory - yang dipinjam
+ * adalah groupnya, jadi daftar ini hanya merinci isi. Kalau nama itemnya sudah
+ * ada di group tersebut, jumlahnya ditambahkan ke baris yang ada supaya tidak
+ * muncul dua baris "Obeng" dengan angka terpisah.
+ */
+function addGroupItem(data) {
+    var group = String(data.group || '').trim();
+    var nama = String(data.nama || '').trim();
+
+    if (!group) return { status: 'error', message: 'Group wajib dipilih.' };
+    if (!nama) return { status: 'error', message: 'Nama item wajib diisi.' };
+
+    var jumlah = Math.max(1, parseInt(data.jumlah || 1, 10) || 1);
+    var kondisi = String(data.kondisi || '').trim();
+    var sheet = sheetItemGroup();
+    var lock = LockService.getScriptLock();
+    lock.waitLock(20000);
+
+    var total = jumlah;
+
+    try {
+        var header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        var colJumlah = colIndex(header, 'Jumlah');
+        var baris = 0;
+
+        // Kondisi ikut jadi pembeda: dua "Obeng" yang satu Baru dan satu Rusak
+        // adalah dua baris, bukan satu baris berjumlah dua.
+        readRows(sheet).rows.forEach(function (r) {
+            if (baris) return;
+            var sama = String(r['Nama Group'] || '').trim().toLowerCase() === group.toLowerCase()
+                && String(r['Nama Item'] || '').trim().toLowerCase() === nama.toLowerCase()
+                && String(r['Kondisi'] || '').trim().toLowerCase() === kondisi.toLowerCase();
+            if (sama) baris = r._row;
+        });
+
+        if (baris && colJumlah) {
+            var lama = Math.max(1, parseInt(sheet.getRange(baris, colJumlah).getValue() || 1, 10) || 1);
+            total = lama + jumlah;
+            sheet.getRange(baris, colJumlah).setValue(total);
+        } else {
+            appendByHeader(sheet, {
+                'Nama Group': group,
+                'Nama Item': nama,
+                'Jumlah': jumlah,
+                'Kondisi': kondisi,
+                'Keterangan': data.keterangan || ''
+            });
+        }
+    } finally {
+        lock.releaseLock();
+    }
+
+    return {
+        status: 'success',
+        message: nama + (kondisi ? ' (' + kondisi + ')' : '')
+            + ' masuk ke group ' + group + ' - jumlah ' + total + '.',
+        group: group,
+        nama: nama,
+        kondisi: kondisi,
+        jumlah: total
+    };
 }
 
 /** Tambah entri referensi ke sheet Master secara manual. */

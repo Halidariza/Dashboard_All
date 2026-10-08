@@ -877,7 +877,7 @@ function lupakanGetAll() {
 }
 
 // Aksi yang mengubah isi sheet - cache harus dibuang supaya perubahan langsung terlihat.
-const AKSI_TULIS = ['addAsset', 'updateAsset', 'deleteAsset', 'checkOut', 'checkIn', 'addMaster'];
+const AKSI_TULIS = ['addAsset', 'updateAsset', 'deleteAsset', 'checkOut', 'checkIn', 'addMaster', 'addGroup', 'setGroupItems', 'addGroupItem', 'updateGroup'];
 
 // Kolom Umur di spreadsheet disegarkan maksimal sekali sehari.
 let umurRefreshedOn = null;

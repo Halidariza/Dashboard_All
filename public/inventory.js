@@ -11,6 +11,9 @@
     var keluar = [];
     var options = {};
     var editingId = null;
+    var assetMode = null;     // 'individu' | 'group' - dipilih sebelum form dibuka
+    var groups = [];          // daftar kelompok beserta isinya, dari tab Group
+    var editingGroup = null;  // nama group yang sedang diubah isinya (null = group baru)
     var confirmCallback = null;
     var sheetUrl = '';        // alamat spreadsheet, hanya dibuka setelah login admin
 
@@ -191,6 +194,16 @@
     // ============================================================
     // RENDER
     // ============================================================
+    /** Penanda isi group di kolom Nama Aset - kosong untuk aset individu. */
+    function jumlahItemBadge(a) {
+        if (!a.group) return '';
+
+        var n = isiGroup(a.group).length;
+        if (!n) return '';
+
+        return ' <span class="hint" style="font-weight:400">(' + n + ' item)</span>';
+    }
+
     function renderAssets() {
         var q = $('searchInput').value.trim().toLowerCase();
         var fKat = $('filterKategori').value;
@@ -201,7 +214,7 @@
             if (fStat && a.status !== fStat) return false;
             if (!q) return true;
 
-            return [a.id, a.nama, a.kategori, a.merk, a.kondisi, a.lokasi, a.status]
+            return [a.id, a.nama, a.group, a.kategori, a.merk, a.kondisi, a.lokasi, a.status]
                 .join(' ').toLowerCase().indexOf(q) > -1;
         });
 
@@ -229,7 +242,7 @@
             var tr = document.createElement('tr');
             tr.innerHTML =
                 '<td class="mono">' + escapeHtml(a.id) + '</td>' +
-                '<td style="font-weight:500">' + escapeHtml(a.nama) + '</td>' +
+                '<td style="font-weight:500">' + escapeHtml(a.nama) + jumlahItemBadge(a) + '</td>' +
                 '<td>' + escapeHtml(a.kategori || '-') + '</td>' +
                 '<td>' + escapeHtml(a.merk || '-') + '</td>' +
                 '<td>' + kondisiBadge(a.kondisi) + '</td>' +
@@ -239,8 +252,13 @@
                 '<td class="mono">' + escapeHtml(hitungUmur(a.tglMasuk) || a.umur || '-') + '</td>' +
                 '<td>' +
                 '<div class="row-actions">' +
-                '<button class="icon-btn' + kunci + '" data-act="edit" title="Edit' + labelAdmin +
-                '"><i data-lucide="pencil"></i></button>' +
+                // Group diurus di tab "Group & Isinya" - menyuntingnya sebagai aset
+                // biasa di sini akan memutus hubungan nama baris dengan groupnya.
+                (a.group
+                    ? '<button class="icon-btn" data-act="group" title="Kelola di tab Group &amp; Isinya">' +
+                      '<i data-lucide="layers"></i></button>'
+                    : '<button class="icon-btn' + kunci + '" data-act="edit" title="Edit' + labelAdmin +
+                      '"><i data-lucide="pencil"></i></button>') +
                 (isOut
                     ? '<button class="icon-btn" data-act="in" title="Kembalikan"><i data-lucide="log-in"></i></button>'
                     : '') +
@@ -251,6 +269,8 @@
                 btn.addEventListener('click', function () {
                     var act = btn.dataset.act;
 
+                    if (act === 'group') { bukaTabGroup(a.group); return; }
+
                     // Edit mengubah data master -> khusus admin.
                     if (act === 'edit') Auth.require(function () { openEdit(a); });
                     // Pengembalian boleh dilakukan siapa saja.
@@ -259,6 +279,148 @@
             });
 
             body.appendChild(tr);
+        });
+
+        if (window.lucide) lucide.createIcons();
+    }
+
+    // ============================================================
+    // TAB: GROUP & ISINYA
+    // ============================================================
+    var groupTerbuka = {};   // nama group -> sedang dibentangkan atau tidak
+
+    /** Tandai bagian yang cocok dengan kata pencarian. */
+    function sorot(teks, q) {
+        var aman = escapeHtml(teks);
+        if (!q) return aman;
+
+        var pos = teks.toLowerCase().indexOf(q);
+        if (pos < 0) return aman;
+
+        return escapeHtml(teks.slice(0, pos))
+            + '<mark>' + escapeHtml(teks.slice(pos, pos + q.length)) + '</mark>'
+            + escapeHtml(teks.slice(pos + q.length));
+    }
+
+    /** Pindah ke tab Group, bentangkan satu group, lalu bawa ke layarnya. */
+    function bukaTabGroup(nama) {
+        var tab = document.querySelector('.tab[data-tab="group"]');
+        if (tab) tab.click();
+
+        // Disaring ke groupnya sendiri supaya yang dituju pasti yang terlihat,
+        // berapa pun banyaknya group lain.
+        groupTerbuka[nama] = true;
+        $('searchGroup').value = nama;
+        renderGroups();
+
+        var kartu = $('groupCards').querySelector('.group-card');
+        if (kartu && kartu.scrollIntoView) kartu.scrollIntoView({ block: 'center' });
+    }
+
+    function renderGroups() {
+        var q = $('searchGroup').value.trim().toLowerCase();
+        var box = $('groupCards');
+        box.innerHTML = '';
+
+        // Group yang namanya cocok tampil utuh; kalau yang cocok itemnya, hanya
+        // item itu yang ditampilkan - supaya jelas kenapa groupnya muncul.
+        var list = [];
+
+        groups.forEach(function (g) {
+            var items = g.items || [];
+            var namaCocok = !q || g.nama.toLowerCase().indexOf(q) > -1;
+
+            var itemCocok = q
+                ? items.filter(function (it) { return it.nama.toLowerCase().indexOf(q) > -1; })
+                : items;
+
+            if (namaCocok) list.push({ g: g, items: items, alasan: '' });
+            else if (itemCocok.length) list.push({ g: g, items: itemCocok, alasan: 'item' });
+        });
+
+        if (!list.length) {
+            $('groupEmpty').style.display = 'block';
+            $('groupEmptyText').textContent = groups.length
+                ? 'Tidak ada group atau item yang cocok dengan pencarian.'
+                : 'Belum ada group. Buat lewat Tambah Aset > Tambah Group.';
+            if (window.lucide) lucide.createIcons();
+            return;
+        }
+
+        $('groupEmpty').style.display = 'none';
+
+        var admin = window.Auth ? Auth.isLoggedIn() : true;
+
+        list.forEach(function (entri) {
+            var g = entri.g;
+            var aset = assets.filter(function (a) {
+                return String(a.group || '').toLowerCase() === g.nama.toLowerCase();
+            })[0];
+
+            // Pencarian yang menemukan item otomatis membentangkan groupnya.
+            var terbuka = entri.alasan === 'item' || groupTerbuka[g.nama];
+
+            var card = document.createElement('div');
+            card.className = 'group-card' + (terbuka ? ' open' : '');
+
+            var jumlahItem = (g.items || []).length;
+            var totalUnit = (g.items || []).reduce(function (n, it) { return n + (it.jumlah || 1); }, 0);
+
+            var meta = jumlahItem
+                ? jumlahItem + ' jenis item - ' + totalUnit + ' buah'
+                : 'Belum ada item';
+            if (g.keterangan) meta += ' - ' + g.keterangan;
+
+            var head = document.createElement('div');
+            head.className = 'group-card-head';
+            head.innerHTML =
+                '<i data-lucide="chevron-right" class="chev"></i>' +
+                '<div>' +
+                '<div class="group-card-title">' + sorot(g.nama, q) + '</div>' +
+                '<div class="group-card-meta">' + escapeHtml(meta) + '</div>' +
+                '</div>' +
+                '<div class="group-card-id">' +
+                (aset ? '<span class="mono" style="font-size:0.75rem">' + escapeHtml(aset.id) + '</span>' : '') +
+                (aset ? statusBadge(aset.status) : '') +
+                '<button class="icon-btn' + (admin ? '' : ' locked') + '" data-act="isi" title="Ubah isi group">' +
+                '<i data-lucide="pencil"></i></button>' +
+                '</div>';
+
+            head.addEventListener('click', function (ev) {
+                if (ev.target.closest('[data-act]')) return;
+                groupTerbuka[g.nama] = !card.classList.contains('open');
+                card.classList.toggle('open');
+            });
+
+            head.querySelector('[data-act="isi"]').addEventListener('click', function () {
+                Auth.require(function () {
+                    openGroup();
+                    muatGroup(g.nama);
+                });
+            });
+
+            var body = document.createElement('div');
+            body.className = 'group-card-body';
+
+            if (!entri.items.length) {
+                body.innerHTML = '<div class="group-item" style="color:var(--text-muted)">' +
+                    'Belum ada item di group ini.</div>';
+            } else {
+                entri.items.forEach(function (it) {
+                    var row = document.createElement('div');
+                    row.className = 'group-item';
+                    row.innerHTML =
+                        '<i data-lucide="dot" style="width:14px;height:14px;color:var(--text-muted)"></i>' +
+                        '<span>' + sorot(it.nama, q) + '</span>' +
+                        (it.kondisi ? kondisiBadge(it.kondisi) : '') +
+                        '<span class="qty">x' + (it.jumlah || 1) + '</span>';
+                    body.appendChild(row);
+                });
+            }
+
+            card.appendChild(head);
+            card.appendChild(body);
+            box.appendChild(card);
         });
 
         if (window.lucide) lucide.createIcons();
@@ -348,6 +510,76 @@
         if (values.indexOf(current) > -1) select.value = current;
     }
 
+    /**
+     * Isi dropdown Kelompok.
+     *
+     * Daftarnya datang dari tab Group di spreadsheet (lewat options.group),
+     * digabung dengan kelompok yang sudah menempel di aset supaya data lama
+     * tidak hilang dari pilihan.
+     */
+    function daftarGroup() {
+        var seen = {};
+        var list = [];
+
+        (options.group || [])
+            .concat(groups.map(function (g) { return g.nama; }))
+            .concat(uniqueOf('group'))
+            .forEach(function (v) {
+                var t = String(v || '').trim();
+                if (t && !seen[t.toLowerCase()]) { seen[t.toLowerCase()] = true; list.push(t); }
+            });
+
+        return list;
+    }
+
+    /** Isi satu group, dari data yang sudah dimuat. */
+    function isiGroup(nama) {
+        var key = String(nama || '').trim().toLowerCase();
+
+        var ketemu = groups.filter(function (g) {
+            return String(g.nama || '').trim().toLowerCase() === key;
+        })[0];
+
+        return (ketemu && ketemu.items) || [];
+    }
+
+    function fillGroupSelect() {
+        var list = daftarGroup();
+        var sel = $('f-group');
+        var current = sel.value;
+
+        sel.innerHTML = '<option value="">-- pilih kelompok --</option>';
+        list.forEach(function (v) {
+            var opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            sel.appendChild(opt);
+        });
+
+        if (list.indexOf(current) > -1) sel.value = current;
+
+        // Daftar di modal Tambah Group - sekadar supaya tidak membuat nama kembar.
+        var box = $('groupList');
+        if (!box) return;
+
+        box.innerHTML = '';
+        if (!list.length) {
+            box.textContent = 'Belum ada group.';
+            return;
+        }
+
+        list.forEach(function (v) {
+            var jml = isiGroup(v).length;
+
+            var chip = document.createElement('span');
+            chip.className = 'group-chip' + (editingGroup === v ? ' active' : '');
+            chip.textContent = jml ? v + ' (' + jml + ')' : v;
+            chip.title = 'Ubah isi group ' + v;
+            chip.addEventListener('click', function () { muatGroup(v); });
+            box.appendChild(chip);
+        });
+    }
+
     function fillDatalists() {
         // Field bebas ketik -> saran lewat datalist
         var map = {
@@ -371,6 +603,8 @@
         fillOptionSelect($('f-kategori'), options.kategori);
         fillOptionSelect($('f-kondisi'), options.kondisi);
         fillOptionSelect($('f-status'), options.status);
+        fillOptionSelect($('g-kategori'), options.kategori);
+        fillOptionSelect($('g-status'), options.status);
         fillOptionSelect($('o-kondisi'), options.kondisi);
 
         // Status peminjaman: pakai daftar khusus sheet peminjaman kalau ada,
@@ -475,11 +709,14 @@
                 assets = res.inventory || [];
                 keluar = res.keluar || [];
                 options = res.options || {};
+                groups = res.groups || [];
 
                 renderStats();
                 renderFilters();
+                fillGroupSelect();
                 fillDatalists();
                 renderAssets();
+                renderGroups();
                 renderKeluar();
 
                 $('setupAlert').classList.remove('show');
@@ -495,6 +732,106 @@
     // ============================================================
     // AKSI: Tambah / Edit
     // ============================================================
+    // Jumlah unit hanya masuk akal untuk group, jadi langkah pemilihan jenis
+    // dipakai sebagai saklar: individu selalu satu baris, group minimal dua.
+    var MODE_LABEL = { individu: 'Aset Individu', group: 'Group Aset' };
+
+    function tampilLangkahMode() {
+        $('assetModeStep').style.display = 'block';
+        $('assetFormStep').style.display = 'none';
+        $('assetBackBtn').style.display = 'none';
+        $('saveAssetBtn').style.display = 'none';
+    }
+
+    function tampilLangkahForm(adaTombolKembali) {
+        $('assetModeStep').style.display = 'none';
+        $('assetFormStep').style.display = 'block';
+        $('assetBackBtn').style.display = adaTombolKembali ? 'inline-flex' : 'none';
+        $('saveAssetBtn').style.display = 'inline-flex';
+    }
+
+    function terapkanMode(mode) {
+        assetMode = mode;
+        $('assetModeLabel').textContent = MODE_LABEL[mode] || '';
+        $('assetModeBanner').classList.add('show');
+
+        var group = mode === 'group';
+
+        // Mode group mencatat ISI sebuah group, bukan aset tersendiri. Item tidak
+        // ber-Id, tidak muncul di tabel, dan tidak punya status/lokasi sendiri -
+        // semua itu melekat pada groupnya. Jadi fieldnya ikut disembunyikan supaya
+        // tidak ada isian yang diam-diam terbuang.
+        ['f-kategori', 'f-merk', 'f-lokasi', 'f-status', 'f-tglMasuk']
+            .forEach(function (id) { tampilField($(id).closest('.form-field'), !group); });
+        tampilField($('a-fileInput').closest('.form-field'), !group);
+
+        // Kondisi melekat pada barangnya sendiri, bukan pada group - jadi ia tetap
+        // ditanyakan walau yang dicatat adalah isi group.
+        tampilField($('f-kondisi').closest('.form-field'), true);
+        if (group) setSelectDefault($('f-kondisi'), 'Baru');
+
+        $('groupField').style.display = group ? 'flex' : 'none';
+        $('jumlahField').style.display = group ? 'flex' : 'none';
+
+        $('namaLabelText').textContent = group ? 'Nama Item' : 'Nama Aset';
+        $('f-nama').placeholder = group ? 'mis. Obeng plus' : 'mis. Penggaris';
+        $('f-nama').readOnly = false;
+        $('namaHint').textContent = group ? '(barang di dalam group)' : '';
+        $('namaHint').style.display = group ? 'inline' : 'none';
+
+        $('jumlahLabelText').textContent = 'Jumlah';
+        $('jumlahHint').textContent = group ? '(berapa buah di dalam group)' : '(tiap unit dapat Id sendiri)';
+
+        $('f-nama').value = '';
+        $('f-jumlah').value = '1';
+
+        if (!group) $('f-group').value = '';
+
+        tampilIsiGroup();
+    }
+
+    /** .form-field memakai display:flex - jangan sampai tertimpa 'block'. */
+    function tampilField(el, tampil) {
+        if (el) el.style.display = tampil ? 'flex' : 'none';
+    }
+
+    /** Kembalikan form ke bentuk aset penuh - mode group menyembunyikan sebagian. */
+    function tampilFieldAset() {
+        ['f-kategori', 'f-merk', 'f-kondisi', 'f-lokasi', 'f-status', 'f-tglMasuk']
+            .forEach(function (id) { tampilField($(id).closest('.form-field'), true); });
+        tampilField($('a-fileInput').closest('.form-field'), true);
+
+        $('namaLabelText').textContent = 'Nama Aset';
+        $('f-nama').placeholder = 'mis. Penggaris';
+        $('jumlahLabelText').textContent = 'Jumlah Unit';
+        $('jumlahHint').textContent = '(tiap unit dapat Id sendiri)';
+    }
+
+    /** Rincian isi group, ditampilkan di bawah pilihan Group. */
+    function tampilIsiGroup() {
+        var group = $('f-group').value;
+        var isi = group ? isiGroup(group) : [];
+
+        $('f-groupIsi').textContent = !group ? ''
+            : (isi.length
+                ? 'Isi sekarang: ' + isi.map(function (it) {
+                    return it.nama
+                        + (it.kondisi ? ' (' + it.kondisi + ')' : '')
+                        + (it.jumlah > 1 ? ' x' + it.jumlah : '');
+                }).join(', ')
+                : 'Group ini belum punya item.');
+    }
+
+    function pilihMode(mode) {
+        terapkanMode(mode);
+        tampilLangkahForm(true);
+
+        // Di mode group, nama aset ditentukan oleh pilihan group - jadi itulah
+        // yang didahulukan.
+        if (mode === 'group') $('f-group').focus();
+        else $('f-nama').focus();
+    }
+
     function openAdd() {
         editingId = null;
         $('assetModalTitle').textContent = 'Tambah Aset';
@@ -507,10 +844,15 @@
         setSelectDefault($('f-status'), 'Tersedia');
         $('f-tglMasuk').value = todayISO();
         $('f-jumlah').value = '1';
-        $('jumlahField').style.display = 'flex';
+        $('f-group').value = '';
+        $('f-nama').readOnly = false;
+        $('namaHint').style.display = 'none';
+        tampilFieldAset();
+        assetMode = null;
+        $('assetModeBanner').classList.remove('show');
+        tampilLangkahMode();
         if (photoAsset) photoAsset.reset();
         openModal('assetModal');
-        $('f-nama').focus();
     }
 
     function openEdit(a) {
@@ -524,7 +866,17 @@
         setSelectValue($('f-kondisi'), a.kondisi);
         setSelectValue($('f-status'), a.status);
         $('f-tglMasuk').value = a.tglMasuk || '';
+        // Edit menyentuh satu baris saja, jadi jenis aset tidak ditanyakan lagi.
+        // Group tidak ditawarkan di sini: memindahkan aset biasa ke dalam sebuah
+        // group lewat form ini akan melahirkan baris group kedua, dan peminjaman
+        // jadi ambigu. Group diurus sepenuhnya di tab "Group & Isinya".
+        assetMode = null;
+        tampilFieldAset();
         $('jumlahField').style.display = 'none';
+        $('groupField').style.display = 'none';
+        $('f-group').value = '';
+        $('assetModeBanner').classList.remove('show');
+        tampilLangkahForm(false);
         // Foto lama tidak ditarik ulang ke picker; mengambil foto baru akan
         // menggantikan link di kolom Dokumen, membiarkannya kosong tidak mengubah apa pun.
         if (photoAsset) photoAsset.reset();
@@ -548,6 +900,8 @@
 
         var isi = {
             editingId: editingId,
+            mode: assetMode,
+            group: $('f-group').value,
             nama: $('f-nama').value,
             kategori: $('f-kategori').value,
             merk: $('f-merk').value,
@@ -594,7 +948,29 @@
         setSelectValue($('f-status'), isi.status);
         $('f-tglMasuk').value = isi.tglMasuk || '';
         $('f-jumlah').value = isi.jumlah || '1';
-        $('jumlahField').style.display = editingId ? 'none' : 'flex';
+
+        if (editingId) {
+            assetMode = null;
+            $('jumlahField').style.display = 'none';
+            $('groupField').style.display = 'none';
+            $('f-group').value = '';
+            $('assetModeBanner').classList.remove('show');
+            tampilLangkahForm(false);
+        } else if (isi.mode) {
+            // terapkanMode mengosongkan Nama & Jumlah karena artinya berganti -
+            // isinya dipasang kembali setelah itu.
+            terapkanMode(isi.mode);
+            setSelectValue($('f-group'), isi.group || '');
+            $('f-nama').value = isi.nama || '';
+            $('f-jumlah').value = isi.jumlah || '1';
+            tampilIsiGroup();
+            tampilLangkahForm(true);
+        } else {
+            // Ditinggalkan saat masih di langkah pemilihan.
+            assetMode = null;
+            $('assetModeBanner').classList.remove('show');
+            tampilLangkahMode();
+        }
 
         if (photoAsset) {
             photoAsset.reset();
@@ -609,11 +985,263 @@
             isi.foto ? 'success' : 'error');
     }
 
+    // ============================================================
+    // AKSI: Tambah Group
+    // ============================================================
+    // ============================================================
+    // EDITOR ISI GROUP
+    // ============================================================
+    // Satu group dipinjam sebagai satu kesatuan, jadi item di dalamnya tidak
+    // diberi Id - daftar ini murni rincian isi.
+    function barisItem(item) {
+        var row = document.createElement('div');
+        row.className = 'item-row';
+
+        var nama = document.createElement('input');
+        nama.type = 'text';
+        nama.placeholder = 'mis. Obeng plus';
+        nama.value = (item && item.nama) || '';
+        nama.dataset.field = 'nama';
+
+        var kondisi = document.createElement('select');
+        kondisi.title = 'Kondisi';
+        kondisi.dataset.field = 'kondisi';
+        kondisi.innerHTML = '<option value="">- kondisi -</option>';
+
+        (options.kondisi || []).forEach(function (v) {
+            var opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            kondisi.appendChild(opt);
+        });
+
+        setSelectValue(kondisi, (item && item.kondisi) || '');
+
+        var jumlah = document.createElement('input');
+        jumlah.type = 'number';
+        jumlah.min = '1';
+        jumlah.value = (item && item.jumlah) || 1;
+        jumlah.title = 'Jumlah';
+        jumlah.dataset.field = 'jumlah';
+
+        var hapus = document.createElement('button');
+        hapus.type = 'button';
+        hapus.className = 'icon-btn';
+        hapus.title = 'Hapus item';
+        hapus.innerHTML = '<i data-lucide="trash-2"></i>';
+        hapus.addEventListener('click', function () {
+            row.remove();
+            if (!$('g-items').querySelector('.item-row')) renderItems([]);
+        });
+
+        row.appendChild(nama);
+        row.appendChild(kondisi);
+        row.appendChild(jumlah);
+        row.appendChild(hapus);
+
+        return row;
+    }
+
+    function renderItems(items) {
+        var box = $('g-items');
+        box.innerHTML = '';
+
+        if (!items.length) {
+            var kosong = document.createElement('div');
+            kosong.className = 'item-empty';
+            kosong.textContent = 'Belum ada item. Group tanpa item tetap bisa disimpan.';
+            box.appendChild(kosong);
+        } else {
+            items.forEach(function (it) { box.appendChild(barisItem(it)); });
+        }
+
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function tambahBarisItem() {
+        var box = $('g-items');
+        var kosong = box.querySelector('.item-empty');
+        if (kosong) kosong.remove();
+
+        var row = barisItem(null);
+        box.appendChild(row);
+
+        if (window.lucide) lucide.createIcons();
+        row.querySelector('[data-field="nama"]').focus();
+    }
+
+    function bacaItems() {
+        var out = [];
+
+        $('g-items').querySelectorAll('.item-row').forEach(function (row) {
+            var nama = row.querySelector('[data-field="nama"]').value.trim();
+            if (!nama) return;
+
+            out.push({
+                nama: nama,
+                kondisi: row.querySelector('[data-field="kondisi"]').value,
+                jumlah: Math.max(1, parseInt(row.querySelector('[data-field="jumlah"]').value, 10) || 1)
+            });
+        });
+
+        return out;
+    }
+
+    /** Pindah ke mode ubah isi group yang sudah ada. */
+    function muatGroup(nama) {
+        editingGroup = nama;
+        $('groupModalTitle').textContent = 'Isi Group - ' + nama;
+        $('g-nama').value = nama;
+        $('g-nama').readOnly = true;
+
+        var g = groups.filter(function (x) { return x.nama === nama; })[0];
+        $('g-keterangan').value = (g && g.keterangan) || '';
+
+        // Kategori/Lokasi/Status tinggal di baris aset milik group ini.
+        var aset = assets.filter(function (a) {
+            return String(a.group || '').toLowerCase() === String(nama).toLowerCase();
+        })[0];
+
+        $('g-lokasi').value = (aset && aset.lokasi) || '';
+        setSelectValue($('g-kategori'), (aset && aset.kategori) || '');
+        setSelectValue($('g-status'), (aset && aset.status) || '');
+
+        renderItems(isiGroup(nama));
+        fillGroupSelect();
+        $('g-addItemBtn').focus();
+    }
+
+    function openGroup() {
+        editingGroup = null;
+        $('groupModalTitle').textContent = 'Tambah Group';
+        $('g-nama').value = '';
+        $('g-nama').readOnly = false;
+        $('g-keterangan').value = '';
+        $('g-lokasi').value = '';
+        setSelectDefault($('g-kategori'), '');
+        setSelectDefault($('g-status'), 'Tersedia');
+        renderItems([]);
+        fillGroupSelect();          // segarkan daftar group yang sudah ada
+        openModal('groupModal');
+        $('g-nama').focus();
+    }
+
+    function saveGroup() {
+        var nama = $('g-nama').value.trim();
+        if (!nama) {
+            toast('Nama Group wajib diisi.', 'error');
+            $('g-nama').focus();
+            return;
+        }
+
+        var items = bacaItems();
+        var btn = $('saveGroupBtn');
+        busy(btn, true, 'Menyimpan...');
+
+        // Group yang sudah ada cukup diperbarui isinya; yang baru dibuat sekaligus
+        // beserta itemnya dalam satu panggilan.
+        var atribut = {
+            nama: nama,
+            keterangan: $('g-keterangan').value.trim(),
+            kategori: $('g-kategori').value,
+            lokasi: $('g-lokasi').value.trim(),
+            status: $('g-status').value,
+            items: items
+        };
+
+        // Group yang sudah ada diperbarui seluruhnya - termasuk atribut baris
+        // asetnya, karena baris itu tidak lagi bisa disunting dari daftar aset.
+        var permintaan = editingGroup
+            ? api('updateGroup', atribut)
+            : api('addGroup', atribut);
+
+        permintaan
+            .then(function (res) {
+                busy(btn, false);
+                closeModal('groupModal');
+
+                // Group sudah lengkap beserta isinya di modal ini, jadi form
+                // Tambah Aset di belakangnya tidak ada lagi yang perlu diisi.
+                closeModal('assetModal');
+                toast(res.message || 'Group disimpan.', 'success');
+
+                // Daftar lokal disegarkan dulu supaya dropdown & jumlah item
+                // langsung benar, tanpa menunggu loadAll selesai.
+                var lama = groups.filter(function (g) { return g.nama !== nama; });
+                groups = lama.concat([{
+                    nama: nama,
+                    keterangan: atribut.keterangan,
+                    items: items
+                }]);
+
+                options.group = res.groups || daftarGroup();
+
+                // Group baru sudah lengkap: ia punya barisnya sendiri di tabel dan
+                // itemnya sudah ikut tersimpan, jadi tidak ada lanjutan yang ditunggu.
+                // Groupnya dibentangkan supaya hasilnya langsung terlihat di tab Group.
+                editingGroup = null;
+                groupTerbuka[nama] = true;
+
+                fillGroupSelect();
+                renderAssets();
+                renderGroups();
+
+                loadAll(true);
+            })
+            .catch(function (err) {
+                busy(btn, false);
+                toast(err.message, 'error');
+            });
+    }
+
+    /** Simpan satu item ke dalam group yang dipilih. */
+    function simpanItemGroup(nama) {
+        var group = $('f-group').value;
+
+        if (!group) {
+            toast('Pilih group tujuannya dulu, atau buat lewat "Tambah Group".', 'error');
+            $('f-group').focus();
+            return;
+        }
+
+        var btn = $('saveAssetBtn');
+        busy(btn, true, 'Menyimpan...');
+
+        api('addGroupItem', {
+            group: group,
+            nama: nama,
+            kondisi: $('f-kondisi').value,
+            jumlah: Math.max(1, parseInt($('f-jumlah').value, 10) || 1)
+        })
+            .then(function (res) {
+                busy(btn, false);
+                closeModal('assetModal');
+                toast(res.message || 'Item ditambahkan.', 'success');
+
+                // Group yang baru diisi dibentangkan supaya hasilnya langsung
+                // terlihat begitu pengguna membuka tab Group.
+                groupTerbuka[group] = true;
+
+                loadAll(true);
+            })
+            .catch(function (err) {
+                busy(btn, false);
+                toast(err.message, 'error');
+            });
+    }
+
     function saveAsset() {
         var nama = $('f-nama').value.trim();
         if (!nama) {
-            toast('Nama Aset wajib diisi.', 'error');
+            toast((assetMode === 'group' ? 'Nama Item' : 'Nama Aset') + ' wajib diisi.', 'error');
             $('f-nama').focus();
+            return;
+        }
+
+        // Mode group tidak membuat aset: isinya masuk sebagai item di dalam group,
+        // tanpa Id dan tanpa baris baru di tabel.
+        if (!editingId && assetMode === 'group') {
+            simpanItemGroup(nama);
             return;
         }
 
@@ -635,7 +1263,7 @@
             payload.id = editingId;
         } else {
             action = 'addAsset';
-            payload.jumlah = parseInt($('f-jumlah').value, 10) || 1;
+            payload.jumlah = 1;
         }
 
         // Foto diupload lebih dulu supaya link-nya bisa ikut dalam satu baris yang
@@ -1435,6 +2063,7 @@
                 document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
                 tab.classList.add('active');
                 $('tab-aset').style.display = tab.dataset.tab === 'aset' ? 'block' : 'none';
+                $('tab-group').style.display = tab.dataset.tab === 'group' ? 'block' : 'none';
                 $('tab-keluar').style.display = tab.dataset.tab === 'keluar' ? 'block' : 'none';
             });
         });
@@ -1451,6 +2080,7 @@
                 perbaruiSheetLink();
 
                 if (assets.length) renderAssets();
+                if (groups.length) renderGroups();
             }
         });
 
@@ -1502,6 +2132,19 @@
         photoReturn.bind();
         photoAsset.bind();
         $('saveAssetBtn').addEventListener('click', saveAsset);
+
+        Array.prototype.forEach.call(document.querySelectorAll('[data-asset-mode]'), function (el) {
+            el.addEventListener('click', function () { pilihMode(el.dataset.assetMode); });
+        });
+        $('assetModeChangeBtn').addEventListener('click', tampilLangkahMode);
+        $('assetBackBtn').addEventListener('click', tampilLangkahMode);
+
+        // Membuat kelompok mengubah data master -> khusus admin, sejalan dengan tambah aset.
+        $('openGroupBtn').addEventListener('click', function () { Auth.require(openGroup); });
+        $('saveGroupBtn').addEventListener('click', saveGroup);
+        $('f-group').addEventListener('change', tampilIsiGroup);
+        $('g-addItemBtn').addEventListener('click', tambahBarisItem);
+        $('searchGroup').addEventListener('input', renderGroups);
         $('saveOutBtn').addEventListener('click', saveOut);
         $('saveReturnBtn').addEventListener('click', saveReturn);
         $('r-asset').addEventListener('change', function () {
