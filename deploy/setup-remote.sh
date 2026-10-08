@@ -6,6 +6,16 @@ set -euo pipefail
 
 APP_DIR=${APP_DIR:-/opt/dashboard}
 SERVICE=${SERVICE:-dashboard}
+
+# Port dipatok, bukan dicari.
+#
+# Dulu skrip ini memindai port bebas mulai dari 3000. Begitu ada aplikasi lain
+# menempati 3000, dashboard pindah sendiri ke port berikutnya - dan URL yang
+# dipakai orang jadi putus tanpa ada yang sadar. Alamat layanan adalah hal yang
+# dijanjikan ke pengguna, jadi ia ditentukan di sini, bukan hasil undian.
+#
+# PORT=auto mengembalikan perilaku pemindaian lama kalau memang dibutuhkan.
+PORT=${PORT:-3002}
 PORT_AWAL=${PORT_AWAL:-3000}
 
 # Root langsung; selain itu lewat sudo.
@@ -28,12 +38,30 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 node --version
 
-echo "==> Cari port yang belum dipakai (mulai dari $PORT_AWAL)"
-port=$PORT_AWAL
-while ss -ltnH "sport = :$port" | grep -q .; do
-    port=$((port + 1))
-done
-echo "    Port terpilih: $port"
+if [ "$PORT" = "auto" ]; then
+    echo "==> Cari port yang belum dipakai (mulai dari $PORT_AWAL)"
+    port=$PORT_AWAL
+    while ss -ltnH "sport = :$port" | grep -q .; do
+        port=$((port + 1))
+    done
+    echo "    Port terpilih: $port"
+else
+    port=$PORT
+    echo "==> Port dipatok di $port"
+
+    # Port yang sedang dipegang service ini sendiri akan bebas begitu direstart.
+    # Kalau pemegangnya aplikasi lain, berhenti di sini - menimpanya diam-diam
+    # berarti mematikan layanan orang tanpa pemberitahuan.
+    if ss -ltnH "sport = :$port" | grep -q .; then
+        if systemctl is-active --quiet "$SERVICE"; then
+            echo "    (sedang dipakai service $SERVICE sendiri - bebas saat restart)"
+        else
+            echo "ERROR: port $port sudah dipakai aplikasi lain."
+            echo "       Periksa dulu: ss -ltnp | grep ':$port '"
+            exit 1
+        fi
+    fi
+fi
 
 echo "==> Pasang dependency"
 cd "$APP_DIR"

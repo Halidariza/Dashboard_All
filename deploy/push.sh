@@ -5,6 +5,11 @@ set -euo pipefail
 
 TARGET=${1:?pakai: ./deploy/push.sh user@host}
 APP_DIR=${APP_DIR:-/opt/dashboard}
+
+# Port layanan diteruskan ke server supaya alamatnya tidak bergeser. Kosongkan
+# saja untuk memakai patokan bawaan di setup-remote.sh, atau PORT=auto untuk
+# kembali memindai port bebas.
+PORT=${PORT:-}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$ROOT"
@@ -27,4 +32,4 @@ scp "$TMP/app.tgz" "$TARGET:/tmp/app.tgz"
 ssh "$TARGET" "tar xzf /tmp/app.tgz -C '$APP_DIR' && rm -f /tmp/app.tgz"
 
 echo "==> Jalankan setup di server"
-ssh -t "$TARGET" "bash '$APP_DIR/deploy/setup-remote.sh'"
+ssh -t "$TARGET" "PORT='$PORT' bash '$APP_DIR/deploy/setup-remote.sh'"
