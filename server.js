@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const dns = require('dns');
 const net = require('net');
 
@@ -95,21 +96,137 @@ function bufferToCsv(topic, message) {
 
 // Function to actually send data to Google Spreadsheet via GAS
 // --- Pemanggil Apps Script -----------------------------------------------
-// Panggilan ke script.google.com sesekali putus di jaringan server. Timeout
-// eksplisit plus retry singkat menahan gangguan sesaat supaya permintaan
-// pengguna tidak langsung gagal.
-const GAS_TIMEOUT_MS = 45000;
+// Panggilan ke script.google.com sesekali putus di jaringan server.
+//
+// Gejala khasnya UND_ERR_CONNECT_TIMEOUT: koneksi yang "dingin" menggantung
+// tepat 10 detik lalu mati. Sepuluh detik itu batas bawaan undici (mesin di
+// balik fetch) dan tidak bisa diubah tanpa menambah dependensi. Koneksi yang
+// sudah hangat hanya butuh ~35 ms, jadi obatnya dua lapis: pakai modul https
+// langsung supaya batas waktunya kita tentukan sendiri, dan tahan koneksinya
+// tetap hidup supaya percobaan berikutnya tidak pernah mulai dari dingin.
+const GAS_TIMEOUT_MS = 45000;         // batas satu permintaan, ujung ke ujung
+const GAS_CONNECT_TIMEOUT_MS = 20000; // beri napas pada koneksi dingin
 const GAS_MAX_RETRY = 3;
+
+const gasAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 10000,
+    maxSockets: 6,
+    family: 4            // jalur IPv6 tidak terpakai; sejalan dengan ipv4first di atas
+});
+
+/**
+ * Satu kali permintaan ke Apps Script, lengkap dengan redirect.
+ *
+ * Apps Script selalu melempar ke script.googleusercontent.com, jadi redirect
+ * ditangani sendiri - sekalian memastikan hop kedua ikut memakai agen yang sama
+ * dan karenanya ikut menikmati koneksi yang sudah hangat.
+ */
+function gasRequestOnce(url, options = {}, sisaRedirect = 5) {
+    return new Promise((resolve, reject) => {
+        const tujuan = new URL(url);
+        const body = options.body || null;
+
+        const headers = Object.assign({}, options.headers);
+        if (body && !headers['Content-Length']) {
+            headers['Content-Length'] = Buffer.byteLength(body);
+        }
+
+        const req = https.request({
+            agent: gasAgent,
+            hostname: tujuan.hostname,
+            port: tujuan.port || 443,
+            path: tujuan.pathname + tujuan.search,
+            method: options.method || 'GET',
+            headers
+        });
+
+        let selesai = false;
+
+        function gagal(err) {
+            if (selesai) return;
+            selesai = true;
+            clearTimeout(batasTotal);
+            clearTimeout(batasSambung);
+            req.destroy();
+            reject(err);
+        }
+
+        // Dua pengawas: satu untuk tahap menyambung, satu untuk keseluruhan.
+        const batasTotal = setTimeout(() => {
+            const e = new Error('Apps Script tidak menjawab dalam ' + (GAS_TIMEOUT_MS / 1000) + ' detik.');
+            e.code = 'GAS_TIMEOUT';
+            gagal(e);
+        }, GAS_TIMEOUT_MS);
+
+        let batasSambung = setTimeout(() => {
+            const e = new Error('Koneksi ke Apps Script tidak terbuka.');
+            e.code = 'GAS_CONNECT_TIMEOUT';
+            gagal(e);
+        }, GAS_CONNECT_TIMEOUT_MS);
+
+        req.once('socket', socket => {
+            // Koneksi yang diambil dari kolam sudah tersambung - tidak ada tahap
+            // menyambung yang perlu diawasi.
+            const sudahTersambung = !socket.connecting;
+            if (sudahTersambung) {
+                clearTimeout(batasSambung);
+            } else {
+                socket.once('connect', () => clearTimeout(batasSambung));
+            }
+        });
+
+        req.once('response', res => {
+            clearTimeout(batasSambung);
+
+            const lokasi = res.headers.location;
+            if (res.statusCode >= 300 && res.statusCode < 400 && lokasi && sisaRedirect > 0) {
+                res.resume();   // buang isinya, soketnya bisa dipakai lagi
+                clearTimeout(batasTotal);
+                selesai = true;
+
+                // Apps Script mengalihkan dengan GET, tanpa membawa body.
+                const lanjut = new URL(lokasi, url).toString();
+                gasRequestOnce(lanjut, { method: 'GET', headers: {} }, sisaRedirect - 1)
+                    .then(resolve, reject);
+                return;
+            }
+
+            const potongan = [];
+            res.on('data', c => potongan.push(c));
+            res.on('end', () => {
+                if (selesai) return;
+                selesai = true;
+                clearTimeout(batasTotal);
+
+                const teks = Buffer.concat(potongan).toString('utf8');
+                resolve({
+                    ok: res.statusCode >= 200 && res.statusCode < 300,
+                    status: res.statusCode,
+                    headers: res.headers,
+                    text: async () => teks,
+                    json: async () => JSON.parse(teks)
+                });
+            });
+            res.on('error', gagal);
+        });
+
+        req.once('error', gagal);
+
+        if (body) req.write(body);
+        req.end();
+    });
+}
 
 async function gasFetch(url, options = {}) {
     let lastError;
 
     for (let percobaan = 1; percobaan <= GAS_MAX_RETRY; percobaan++) {
         try {
-            return await fetch(url, { ...options, signal: AbortSignal.timeout(GAS_TIMEOUT_MS) });
+            return await gasRequestOnce(url, options);
         } catch (e) {
             lastError = e;
-            const kode = (e.cause && e.cause.code) || e.name;
+            const kode = e.code || (e.cause && e.cause.code) || e.name;
             console.warn(`⚠️  Apps Script gagal (percobaan ${percobaan}/${GAS_MAX_RETRY}): ${kode}`);
 
             if (percobaan < GAS_MAX_RETRY) {
