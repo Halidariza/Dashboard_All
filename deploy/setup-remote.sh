@@ -57,7 +57,11 @@ else
     # sedang berjalan di port lain sementara port yang dipatok dipegang
     # aplikasi lain. Pemeriksaan yang longgar meloloskannya, lalu service gagal
     # bind saat restart dan dashboard mati tanpa sebab yang jelas.
-    pid_port=$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)
+    # grep keluar dengan kode 1 kalau tidak menemukan apa pun, dan di bawah
+    # set -euo pipefail itu mematikan skrip - tepat ketika portnya BEBAS,
+    # kebalikan dari yang dimaksudkan. || true membuat "tidak ada pemegang"
+    # menjadi hasil yang sah, bukan kegagalan.
+    pid_port=$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2 || true)
 
     if [ -n "${pid_port:-}" ]; then
         pid_service=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
