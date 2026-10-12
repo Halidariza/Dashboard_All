@@ -15,7 +15,7 @@ SERVICE=${SERVICE:-dashboard}
 # dijanjikan ke pengguna, jadi ia ditentukan di sini, bukan hasil undian.
 #
 # PORT=auto mengembalikan perilaku pemindaian lama kalau memang dibutuhkan.
-PORT=${PORT:-3002}
+PORT=${PORT:-9008}
 PORT_AWAL=${PORT_AWAL:-3000}
 
 # Root langsung; selain itu lewat sudo.
@@ -52,12 +52,22 @@ else
     # Port yang sedang dipegang service ini sendiri akan bebas begitu direstart.
     # Kalau pemegangnya aplikasi lain, berhenti di sini - menimpanya diam-diam
     # berarti mematikan layanan orang tanpa pemberitahuan.
-    if ss -ltnH "sport = :$port" | grep -q .; then
-        if systemctl is-active --quiet "$SERVICE"; then
+    #
+    # Pembandingnya PID, bukan sekadar "apakah service hidup": service bisa
+    # sedang berjalan di port lain sementara port yang dipatok dipegang
+    # aplikasi lain. Pemeriksaan yang longgar meloloskannya, lalu service gagal
+    # bind saat restart dan dashboard mati tanpa sebab yang jelas.
+    pid_port=$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)
+
+    if [ -n "${pid_port:-}" ]; then
+        pid_service=$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null || echo 0)
+
+        if [ "$pid_port" = "${pid_service:-0}" ]; then
             echo "    (sedang dipakai service $SERVICE sendiri - bebas saat restart)"
         else
-            echo "ERROR: port $port sudah dipakai aplikasi lain."
-            echo "       Periksa dulu: ss -ltnp | grep ':$port '"
+            echo "ERROR: port $port dipakai proses lain (PID $pid_port), bukan service $SERVICE."
+            ss -ltnp | grep ":$port " || true
+            echo "       Hentikan dulu pemiliknya, lalu jalankan deploy lagi."
             exit 1
         fi
     fi
